@@ -43,6 +43,5 @@ lint:
 run:
 	cmd/gophermart/gophermart -a localhost:8080 -d fakeDbUri -r fakeAccuralAddr
 
-
 generate:
 	go generate ./...
