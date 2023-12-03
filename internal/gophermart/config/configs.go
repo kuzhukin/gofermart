@@ -26,6 +26,7 @@ func Make() (*Config, error) {
 	flag.StringVar(&config.RunAddress, "a", "", "Server's host:port")
 	flag.StringVar(&config.DatabaseURI, "d", "", "Database uri")
 	flag.StringVar(&config.AccrualAddress, "r", "", "Accural system's address")
+	flag.Parse()
 
 	if err := env.Parse(&config); err != nil {
 		return nil, fmt.Errorf("parse env, err=%w", err)
