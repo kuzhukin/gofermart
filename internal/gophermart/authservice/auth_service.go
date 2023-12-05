@@ -41,14 +41,14 @@ func (s *AuthService) Authorize(login string, password string) (string, error) {
 	userInfo, err := s.authStorage.GetUserInfo(login)
 	if err != nil {
 		if errors.Is(err, storage.ErrIsNotContains) {
-			return "", fmt.Errorf("user with login=%s wan't registred, err=%w", login, handler.ErrIsNotAutorized)
+			return "", fmt.Errorf("wasn't registred, err=%w", handler.ErrIsNotAutorized)
 		}
 
 		return "", fmt.Errorf("get user info login=%s, err=%w", login, err)
 	}
 
 	if userInfo.Password != password {
-		return "", fmt.Errorf("bad password for user with login=%s, err=%w", login, handler.ErrIsNotAutorized)
+		return "", fmt.Errorf("bad password, err=%w", handler.ErrIsNotAutorized)
 	}
 
 	return userInfo.Key, nil

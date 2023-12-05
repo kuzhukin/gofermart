@@ -28,17 +28,23 @@ func StartNew() (*GophermartServer, error) {
 		return nil, err
 	}
 
-	server := newServer(config)
+	server, err := newServer(config)
+	if err != nil {
+		return nil, err
+	}
 	server.start(config.RunAddress)
 
 	return server, nil
 }
 
-func newServer(config *config.Config) *GophermartServer {
+func newServer(config *config.Config) (*GophermartServer, error) {
 	router := chi.NewRouter()
 
 	registerMiddlewares(router)
-	RegistrationHandlers(router)
+
+	if err := registerHandlers(router); err != nil {
+		return nil, err
+	}
 
 	return &GophermartServer{
 		srvr: http.Server{
@@ -46,14 +52,14 @@ func newServer(config *config.Config) *GophermartServer {
 			Handler: router,
 		},
 		waitingShutdownCh: make(chan struct{}),
-	}
+	}, nil
 }
 
 func registerMiddlewares(router *chi.Mux) {
 	router.Use(middleware.LoggingHTTPHandler)
 }
 
-func RegistrationHandlers(router *chi.Mux) error {
+func registerHandlers(router *chi.Mux) error {
 	storage := storage.New()
 	cryptographer, err := cryptographer.NewAesCryptographer()
 	if err != nil {

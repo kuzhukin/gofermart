@@ -29,8 +29,15 @@ func NewAutentifiactionHandler(authorizer UserAuthorizer) *AutentifiactionHandle
 func (h *AutentifiactionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	zlog.Logger.Debugf("auth handler")
 
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
 	authKey, err := h.handle(r)
 	if err != nil {
+		zlog.Logger.Infof("Handle request was failed with err=%s", err)
+
 		if errors.Is(err, message.ErrDesirializeData) {
 			w.WriteHeader(http.StatusBadRequest)
 		} else if errors.Is(err, ErrIsNotAutorized) {
@@ -54,7 +61,7 @@ func (h *AutentifiactionHandler) handle(r *http.Request) (string, error) {
 
 	key, err := h.authorizer.Authorize(userData.Login, userData.Password)
 	if err != nil {
-		return "", fmt.Errorf("authorize login=%s", userData.Login)
+		return "", fmt.Errorf("cann't authorize user with login=%s, err=%w", userData.Login, err)
 	}
 
 	return key, nil
