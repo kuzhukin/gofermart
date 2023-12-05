@@ -2,6 +2,10 @@ package gophermart
 
 import (
 	"context"
+	"fmt"
+	"gophermart/internal/gophermart/authservice"
+	"gophermart/internal/gophermart/authservice/cryptographer"
+	"gophermart/internal/gophermart/authservice/storage"
 	"gophermart/internal/gophermart/config"
 	"gophermart/internal/gophermart/handler"
 	"gophermart/internal/gophermart/handler/middleware"
@@ -24,17 +28,23 @@ func StartNew() (*GophermartServer, error) {
 		return nil, err
 	}
 
-	server := newServer(config)
+	server, err := newServer(config)
+	if err != nil {
+		return nil, err
+	}
 	server.start(config.RunAddress)
 
 	return server, nil
 }
 
-func newServer(config *config.Config) *GophermartServer {
+func newServer(config *config.Config) (*GophermartServer, error) {
 	router := chi.NewRouter()
 
 	registerMiddlewares(router)
-	registerHAndlers(router)
+
+	if err := registerHandlers(router); err != nil {
+		return nil, err
+	}
 
 	return &GophermartServer{
 		srvr: http.Server{
@@ -42,20 +52,30 @@ func newServer(config *config.Config) *GophermartServer {
 			Handler: router,
 		},
 		waitingShutdownCh: make(chan struct{}),
-	}
+	}, nil
 }
 
 func registerMiddlewares(router *chi.Mux) {
 	router.Use(middleware.LoggingHTTPHandler)
 }
 
-func registerHAndlers(router *chi.Mux) {
-	router.Handle(registerEndpoint, handler.NewRegisterHandler())
-	router.Handle(loginEndpoint, handler.NewLoginHandler())
+func registerHandlers(router *chi.Mux) error {
+	storage := storage.New()
+	cryptographer, err := cryptographer.NewAesCryptographer()
+	if err != nil {
+		return fmt.Errorf("new aes cryptographer, err=%w", err)
+	}
+
+	authService := authservice.NewAuthService(storage, cryptographer)
+
+	router.Handle(registerEndpoint, handler.NewRegistrationHandler(authService))
+	router.Handle(loginEndpoint, handler.NewAutentifiactionHandler(authService))
 	router.Handle(ordersEndpoint, handler.NewOrdersHandler())
 	router.Handle(balanceEndpoint, handler.NewBalanceHandler())
 	router.Handle(balanceWithdrawEndpoint, handler.NewBalanceWithdrawHandler())
 	router.Handle(allWithdrawalsEndpoint, handler.NewWithdrawalsHandler())
+
+	return nil
 }
 
 func (s *GophermartServer) start(hostport string) {
