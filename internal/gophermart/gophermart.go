@@ -38,7 +38,7 @@ func newServer(config *config.Config) *GophermartServer {
 	router := chi.NewRouter()
 
 	registerMiddlewares(router)
-	registerHandlers(router)
+	RegistrationHandlers(router)
 
 	return &GophermartServer{
 		srvr: http.Server{
@@ -53,7 +53,7 @@ func registerMiddlewares(router *chi.Mux) {
 	router.Use(middleware.LoggingHTTPHandler)
 }
 
-func registerHandlers(router *chi.Mux) error {
+func RegistrationHandlers(router *chi.Mux) error {
 	storage := storage.New()
 	cryptographer, err := cryptographer.NewAesCryptographer()
 	if err != nil {
@@ -62,8 +62,8 @@ func registerHandlers(router *chi.Mux) error {
 
 	authService := authservice.NewAuthService(storage, cryptographer)
 
-	router.Handle(registerEndpoint, handler.NewRegisterHandler(authService))
-	router.Handle(loginEndpoint, handler.NewLoginHandler())
+	router.Handle(registerEndpoint, handler.NewRegistrationHandler(authService))
+	router.Handle(loginEndpoint, handler.NewAutentifiactionHandler(authService))
 	router.Handle(ordersEndpoint, handler.NewOrdersHandler())
 	router.Handle(balanceEndpoint, handler.NewBalanceHandler())
 	router.Handle(balanceWithdrawEndpoint, handler.NewBalanceWithdrawHandler())

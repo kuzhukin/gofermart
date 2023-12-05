@@ -1,16 +1,12 @@
 package authservice
 
 import (
+	"errors"
 	"fmt"
 	"gophermart/internal/gophermart/authservice/cryptographer"
 	"gophermart/internal/gophermart/authservice/storage"
+	"gophermart/internal/gophermart/handler"
 )
-
-type UserAuthorizer interface {
-	Authorize(login string, password string) (string, error)
-}
-
-// var _ UserAuthorizer = &AuthService{}
 
 type AuthService struct {
 	authStorage   storage.Storage
@@ -31,10 +27,31 @@ func (s *AuthService) Register(login string, password string) (string, error) {
 	}
 
 	if err := s.authStorage.SaveUserInfo(login, password, key); err != nil {
+		if errors.Is(storage.ErrIsAlreadySaved, err) {
+			return "", fmt.Errorf("user with login=%s already registred, err=%w", login, handler.ErrIsAlreadyRegistred)
+		}
+
 		return "", fmt.Errorf("save user's info login=%s, err=%w", login, err)
 	}
 
 	return key, nil
+}
+
+func (s *AuthService) Authorize(login string, password string) (string, error) {
+	userInfo, err := s.authStorage.GetUserInfo(login)
+	if err != nil {
+		if errors.Is(err, storage.ErrIsNotContains) {
+			return "", fmt.Errorf("user with login=%s wan't registred, err=%w", login, handler.ErrIsNotAutorized)
+		}
+
+		return "", fmt.Errorf("get user info login=%s, err=%w", login, err)
+	}
+
+	if userInfo.Password != password {
+		return "", fmt.Errorf("bad password for user with login=%s, err=%w", login, handler.ErrIsNotAutorized)
+	}
+
+	return userInfo.Key, nil
 }
 
 func (s *AuthService) calcUserKey(login string, password string) (string, error) {
