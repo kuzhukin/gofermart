@@ -10,6 +10,8 @@ import (
 const cryptoKey = "7WXJz8RIFqv8zBsL67vtVw=="
 const cryptoVec = "WCwiTM0s8JuF7eFs"
 
+type Key string
+
 type Cryptographer interface {
 	Encrypt(data string) (string, error)
 }

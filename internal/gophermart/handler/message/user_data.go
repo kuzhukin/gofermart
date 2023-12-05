@@ -2,10 +2,15 @@ package message
 
 import (
 	"encoding/json"
+	"errors"
 )
 
 var _ Serializable = &UserData{}
 var _ Desirializable = &UserData{}
+
+var (
+	ErrDesirializeData = errors.New("user data desirialization failed")
+)
 
 type UserData struct {
 	Login    string `json:"login"`
@@ -21,5 +26,13 @@ func (m *UserData) Serialize() ([]byte, error) {
 }
 
 func (m *UserData) Desirialize(data []byte) error {
-	return json.Unmarshal(data, m)
+	if err := json.Unmarshal(data, m); err != nil {
+		return errors.Join(ErrDesirializeData, err)
+	}
+
+	if m.Login == "" || m.Password == "" {
+		return ErrDesirializeData
+	}
+
+	return nil
 }

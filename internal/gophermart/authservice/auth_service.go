@@ -1,20 +1,14 @@
 package authservice
 
 import (
+	"fmt"
 	"gophermart/internal/gophermart/authservice/cryptographer"
 	"gophermart/internal/gophermart/authservice/storage"
-	"gophermart/internal/gophermart/authservice/userinfo"
 )
 
-type UserRegistrator interface {
-	Register(login string, password string) (userinfo.UserKey, error)
-}
-
 type UserAuthorizer interface {
-	Authorize(login string, password string) (userinfo.UserKey, error)
+	Authorize(login string, password string) (string, error)
 }
-
-var _ UserRegistrator = &AuthService{}
 
 // var _ UserAuthorizer = &AuthService{}
 
@@ -30,26 +24,28 @@ func NewAuthService(storage storage.Storage, cryptographer cryptographer.Cryptog
 	}
 }
 
-func (s *AuthService) Register(login string, password string) (userinfo.UserKey, error) {
-	user := userinfo.New(login, password)
-
-	key, err := s.calcUserKey(user)
+func (s *AuthService) Register(login string, password string) (string, error) {
+	key, err := s.calcUserKey(login, password)
 	if err != nil {
 		return "", err
 	}
 
-	if err := s.authStorage.SaveUserInfo(user.Login, user.Password, key); err != nil {
-		return "", err
+	if err := s.authStorage.SaveUserInfo(login, password, key); err != nil {
+		return "", fmt.Errorf("save user's info login=%s, err=%w", login, err)
 	}
 
 	return key, nil
 }
 
-func (s *AuthService) calcUserKey(user *userinfo.UserInfo) (userinfo.UserKey, error) {
-	key, err := s.cryptographer.Encrypt(user.String())
+func (s *AuthService) calcUserKey(login string, password string) (string, error) {
+	key, err := s.cryptographer.Encrypt(userDataToString(login, password))
 	if err != nil {
-		return "", nil
+		return "", fmt.Errorf("calc user key, err=%w", err)
 	}
 
-	return userinfo.UserKey(key), nil
+	return key, nil
+}
+
+func userDataToString(login, password string) string {
+	return fmt.Sprintf("%s-%s", login, password)
 }

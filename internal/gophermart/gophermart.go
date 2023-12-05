@@ -2,6 +2,10 @@ package gophermart
 
 import (
 	"context"
+	"fmt"
+	"gophermart/internal/gophermart/authservice"
+	"gophermart/internal/gophermart/authservice/cryptographer"
+	"gophermart/internal/gophermart/authservice/storage"
 	"gophermart/internal/gophermart/config"
 	"gophermart/internal/gophermart/handler"
 	"gophermart/internal/gophermart/handler/middleware"
@@ -34,7 +38,7 @@ func newServer(config *config.Config) *GophermartServer {
 	router := chi.NewRouter()
 
 	registerMiddlewares(router)
-	registerHAndlers(router)
+	registerHandlers(router)
 
 	return &GophermartServer{
 		srvr: http.Server{
@@ -49,13 +53,23 @@ func registerMiddlewares(router *chi.Mux) {
 	router.Use(middleware.LoggingHTTPHandler)
 }
 
-func registerHAndlers(router *chi.Mux) {
-	router.Handle(registerEndpoint, handler.NewRegisterHandler())
+func registerHandlers(router *chi.Mux) error {
+	storage := storage.New()
+	cryptographer, err := cryptographer.NewAesCryptographer()
+	if err != nil {
+		return fmt.Errorf("new aes cryptographer, err=%w", err)
+	}
+
+	authService := authservice.NewAuthService(storage, cryptographer)
+
+	router.Handle(registerEndpoint, handler.NewRegisterHandler(authService))
 	router.Handle(loginEndpoint, handler.NewLoginHandler())
 	router.Handle(ordersEndpoint, handler.NewOrdersHandler())
 	router.Handle(balanceEndpoint, handler.NewBalanceHandler())
 	router.Handle(balanceWithdrawEndpoint, handler.NewBalanceWithdrawHandler())
 	router.Handle(allWithdrawalsEndpoint, handler.NewWithdrawalsHandler())
+
+	return nil
 }
 
 func (s *GophermartServer) start(hostport string) {

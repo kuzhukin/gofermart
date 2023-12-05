@@ -15,5 +15,5 @@ func init() {
 	}
 
 	Logger = logger.Sugar()
-	_ = logger.Level().Enabled(zap.ErrorLevel)
+	_ = Logger.Level().Enabled(zap.DebugLevel)
 }
