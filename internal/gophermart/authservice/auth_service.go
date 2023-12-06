@@ -54,6 +54,15 @@ func (s *AuthService) Authorize(login string, password string) (string, error) {
 	return userInfo.Key, nil
 }
 
+func (s *AuthService) Check(userKey string) (string, error) {
+	info, err := s.authStorage.GetUserInfoByKey(userKey)
+	if errors.Is(err, storage.ErrIsNotContains) {
+		return "", fmt.Errorf("wasn't registred, err=%w", handler.ErrIsNotAutorized)
+	}
+
+	return info.Login, nil
+}
+
 func (s *AuthService) calcUserKey(login string, password string) (string, error) {
 	key, err := s.cryptographer.Encrypt(userDataToString(login, password))
 	if err != nil {

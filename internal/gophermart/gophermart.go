@@ -9,6 +9,8 @@ import (
 	"gophermart/internal/gophermart/config"
 	"gophermart/internal/gophermart/handler"
 	"gophermart/internal/gophermart/handler/middleware"
+	"gophermart/internal/gophermart/orderscontroller"
+	"gophermart/internal/gophermart/orderscontroller/ordersstorage"
 	"gophermart/internal/gophermart/zlog"
 	"net/http"
 	"time"
@@ -67,10 +69,11 @@ func registerHandlers(router *chi.Mux) error {
 	}
 
 	authService := authservice.NewAuthService(storage, cryptographer)
+	ordersController := orderscontroller.NewOrdersController(ordersstorage.New())
 
 	router.Handle(registerEndpoint, handler.NewRegistrationHandler(authService))
 	router.Handle(loginEndpoint, handler.NewAutentifiactionHandler(authService))
-	router.Handle(ordersEndpoint, handler.NewOrdersHandler())
+	router.Handle(ordersEndpoint, handler.NewOrdersHandler(authService, ordersController))
 	router.Handle(balanceEndpoint, handler.NewBalanceHandler())
 	router.Handle(balanceWithdrawEndpoint, handler.NewBalanceWithdrawHandler())
 	router.Handle(allWithdrawalsEndpoint, handler.NewWithdrawalsHandler())

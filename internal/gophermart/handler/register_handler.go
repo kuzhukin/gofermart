@@ -3,7 +3,7 @@ package handler
 import (
 	"errors"
 	"fmt"
-	"gophermart/internal/gophermart/handler/message"
+	"gophermart/internal/gophermart/userdata"
 	"gophermart/internal/gophermart/zlog"
 	"net/http"
 )
@@ -40,7 +40,7 @@ func (h *RegistrationHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		zlog.Logger.Infof("Handle request was failed with err=%s", err)
 
-		if errors.Is(err, message.ErrDesirializeData) {
+		if errors.Is(err, userdata.ErrDesirializeUserData) || errors.Is(err, userdata.ErrBadUserData) {
 			w.WriteHeader(http.StatusBadRequest)
 		} else if errors.Is(err, ErrIsAlreadyRegistred) {
 			w.WriteHeader(http.StatusConflict)
