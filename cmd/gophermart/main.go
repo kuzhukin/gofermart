@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"gophermart/internal/gophermart"
-	"gophermart/internal/gophermart/zlog"
+	"gophermart/internal/apiserver"
+	"gophermart/internal/zlog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -26,7 +26,7 @@ func run() error {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT)
 
-	srvr, err := gophermart.StartNew()
+	srvr, err := apiserver.StartNew()
 	if err != nil {
 		return fmt.Errorf("start gophermart server, err=%w", err)
 	}

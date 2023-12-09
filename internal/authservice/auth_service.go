@@ -3,9 +3,9 @@ package authservice
 import (
 	"errors"
 	"fmt"
-	"gophermart/internal/gophermart/authservice/cryptographer"
-	"gophermart/internal/gophermart/authservice/storage"
-	"gophermart/internal/gophermart/handler"
+	"gophermart/internal/apiserver/handler"
+	"gophermart/internal/authservice/cryptographer"
+	"gophermart/internal/authservice/storage"
 )
 
 type AuthService struct {

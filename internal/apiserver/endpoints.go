@@ -1,4 +1,4 @@
-package gophermart
+package apiserver
 
 const (
 	// POST - user registration

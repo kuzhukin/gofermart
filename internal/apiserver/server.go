@@ -1,17 +1,17 @@
-package gophermart
+package apiserver
 
 import (
 	"context"
 	"fmt"
-	"gophermart/internal/gophermart/authservice"
-	"gophermart/internal/gophermart/authservice/cryptographer"
-	"gophermart/internal/gophermart/authservice/storage"
-	"gophermart/internal/gophermart/config"
-	"gophermart/internal/gophermart/handler"
-	"gophermart/internal/gophermart/handler/middleware"
-	"gophermart/internal/gophermart/orderscontroller"
-	"gophermart/internal/gophermart/orderscontroller/ordersstorage"
-	"gophermart/internal/gophermart/zlog"
+	"gophermart/internal/apiserver/handler"
+	"gophermart/internal/apiserver/middleware"
+	"gophermart/internal/authservice"
+	"gophermart/internal/authservice/cryptographer"
+	"gophermart/internal/authservice/storage"
+	"gophermart/internal/config"
+	"gophermart/internal/orderscontroller"
+	"gophermart/internal/orderscontroller/ordersstorage"
+	"gophermart/internal/zlog"
 	"net/http"
 	"time"
 

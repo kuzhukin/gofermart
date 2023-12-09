@@ -2,7 +2,7 @@ package handler
 
 import (
 	"fmt"
-	"gophermart/internal/gophermart/userdata"
+	"gophermart/internal/userdata"
 	"io"
 	"net/http"
 )

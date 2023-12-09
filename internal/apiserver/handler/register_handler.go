@@ -3,8 +3,8 @@ package handler
 import (
 	"errors"
 	"fmt"
-	"gophermart/internal/gophermart/userdata"
-	"gophermart/internal/gophermart/zlog"
+	"gophermart/internal/userdata"
+	"gophermart/internal/zlog"
 	"net/http"
 )
 

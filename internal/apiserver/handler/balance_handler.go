@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"gophermart/internal/gophermart/zlog"
+	"gophermart/internal/zlog"
 	"net/http"
 )
 

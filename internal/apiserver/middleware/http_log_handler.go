@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"gophermart/internal/gophermart/zlog"
+	"gophermart/internal/zlog"
 	"net/http"
 	"time"
 )

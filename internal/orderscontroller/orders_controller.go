@@ -3,7 +3,7 @@ package orderscontroller
 import (
 	"errors"
 	"fmt"
-	"gophermart/internal/gophermart/orderscontroller/ordersstorage"
+	"gophermart/internal/orderscontroller/ordersstorage"
 )
 
 type OrderStatus int
