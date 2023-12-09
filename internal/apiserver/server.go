@@ -6,11 +6,12 @@ import (
 	"gophermart/internal/apiserver/handler"
 	"gophermart/internal/apiserver/middleware"
 	"gophermart/internal/authservice"
+	"gophermart/internal/authservice/authstorage"
 	"gophermart/internal/authservice/cryptographer"
-	"gophermart/internal/authservice/storage"
 	"gophermart/internal/config"
 	"gophermart/internal/orderscontroller"
 	"gophermart/internal/orderscontroller/ordersstorage"
+	"gophermart/internal/sql"
 	"gophermart/internal/zlog"
 	"net/http"
 	"time"
@@ -19,7 +20,8 @@ import (
 )
 
 type GophermartServer struct {
-	srvr http.Server
+	srvr    http.Server
+	sqlCtrl *sql.Controller
 
 	waitingShutdownCh chan struct{}
 }
@@ -44,7 +46,12 @@ func newServer(config *config.Config) (*GophermartServer, error) {
 
 	registerMiddlewares(router)
 
-	if err := registerHandlers(router); err != nil {
+	sqlController, err := sql.StartNewController(config.DatabaseURI)
+	if err != nil {
+		return nil, fmt.Errorf("start new sql controller, err=%w", err)
+	}
+
+	if err := registerHandlers(router, sqlController); err != nil {
 		return nil, err
 	}
 
@@ -53,6 +60,7 @@ func newServer(config *config.Config) (*GophermartServer, error) {
 			Addr:    config.RunAddress,
 			Handler: router,
 		},
+		sqlCtrl:           sqlController,
 		waitingShutdownCh: make(chan struct{}),
 	}, nil
 }
@@ -61,8 +69,8 @@ func registerMiddlewares(router *chi.Mux) {
 	router.Use(middleware.LoggingHTTPHandler)
 }
 
-func registerHandlers(router *chi.Mux) error {
-	storage := storage.New()
+func registerHandlers(router *chi.Mux, sqlCtrl *sql.Controller) error {
+	storage := authstorage.New(sqlCtrl)
 	cryptographer, err := cryptographer.NewAesCryptographer()
 	if err != nil {
 		return fmt.Errorf("new aes cryptographer, err=%w", err)

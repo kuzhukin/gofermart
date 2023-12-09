@@ -4,16 +4,16 @@ import (
 	"errors"
 	"fmt"
 	"gophermart/internal/apiserver/handler"
+	"gophermart/internal/authservice/authstorage"
 	"gophermart/internal/authservice/cryptographer"
-	"gophermart/internal/authservice/storage"
 )
 
 type AuthService struct {
-	authStorage   storage.Storage
+	authStorage   authstorage.Storage
 	cryptographer cryptographer.Cryptographer
 }
 
-func NewAuthService(storage storage.Storage, cryptographer cryptographer.Cryptographer) *AuthService {
+func NewAuthService(storage authstorage.Storage, cryptographer cryptographer.Cryptographer) *AuthService {
 	return &AuthService{
 		authStorage:   storage,
 		cryptographer: cryptographer,
@@ -27,7 +27,7 @@ func (s *AuthService) Register(login string, password string) (string, error) {
 	}
 
 	if err := s.authStorage.SaveUserInfo(login, password, key); err != nil {
-		if errors.Is(storage.ErrIsAlreadySaved, err) {
+		if errors.Is(authstorage.ErrIsAlreadySaved, err) {
 			return "", fmt.Errorf("user with login=%s already registred, err=%w", login, handler.ErrIsAlreadyRegistred)
 		}
 
@@ -40,7 +40,7 @@ func (s *AuthService) Register(login string, password string) (string, error) {
 func (s *AuthService) Authorize(login string, password string) (string, error) {
 	userInfo, err := s.authStorage.GetUserInfo(login)
 	if err != nil {
-		if errors.Is(err, storage.ErrIsNotContains) {
+		if errors.Is(err, authstorage.ErrIsNotContains) {
 			return "", fmt.Errorf("wasn't registred, err=%w", handler.ErrIsNotAutorized)
 		}
 
@@ -56,7 +56,7 @@ func (s *AuthService) Authorize(login string, password string) (string, error) {
 
 func (s *AuthService) Check(userKey string) (string, error) {
 	info, err := s.authStorage.GetUserInfoByKey(userKey)
-	if errors.Is(err, storage.ErrIsNotContains) {
+	if errors.Is(err, authstorage.ErrIsNotContains) {
 		return "", fmt.Errorf("wasn't registred, err=%w", handler.ErrIsNotAutorized)
 	}
 
