@@ -107,7 +107,7 @@ func (h *OrdersHandler) loadNewOrder(w http.ResponseWriter, r *http.Request, log
 		return orderscontroller.OrderUnknownStatus, fmt.Errorf("get order id, err=%w", err)
 	}
 
-	status, err := h.orderscontroller.AddOrder(login, orderId)
+	status, err := h.orderscontroller.AddOrder(r.Context(), login, orderId)
 	if err != nil {
 		return orderscontroller.OrderUnknownStatus, fmt.Errorf("add order, err=%w", err)
 	}
@@ -145,6 +145,10 @@ func parseOrderId(data []byte) (string, error) {
 		if !unicode.IsDigit(c) {
 			return "", ErrBadOrderId
 		}
+	}
+
+	if ok := validateOrderId(orderId); !ok {
+		return "", ErrBadOrderId
 	}
 
 	return orderId, nil

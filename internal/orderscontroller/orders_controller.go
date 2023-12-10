@@ -1,6 +1,7 @@
 package orderscontroller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"gophermart/internal/orderscontroller/ordersstorage"
@@ -26,8 +27,8 @@ func NewOrdersController(storage ordersstorage.Storage) *OrdersController {
 	}
 }
 
-func (c *OrdersController) AddOrder(login string, orderID string) (OrderStatus, error) {
-	ok, err := c.storage.HaveOrder(login, orderID)
+func (c *OrdersController) AddOrder(ctx context.Context, login string, orderID string) (OrderStatus, error) {
+	ok, err := c.storage.HaveOrder(ctx, login, orderID)
 	if err != nil {
 		if errors.Is(err, ordersstorage.ErrLoginConflict) {
 			return OrderUnknownStatus, ErrOrderRegistredByOtherUser
@@ -40,7 +41,7 @@ func (c *OrdersController) AddOrder(login string, orderID string) (OrderStatus, 
 		return OrderAlreadyExistsStatus, nil
 	}
 
-	if err := c.storage.SaveOrder(login, orderID); err != nil {
+	if err := c.storage.SaveOrder(ctx, login, orderID); err != nil {
 		return OrderUnknownStatus, fmt.Errorf("save order, err=%w", err)
 	}
 

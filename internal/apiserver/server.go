@@ -77,7 +77,7 @@ func registerHandlers(router *chi.Mux, sqlCtrl *sql.Controller) error {
 	}
 
 	authService := authservice.NewAuthService(storage, cryptographer)
-	ordersController := orderscontroller.NewOrdersController(ordersstorage.New())
+	ordersController := orderscontroller.NewOrdersController(ordersstorage.New(sqlCtrl))
 
 	router.Handle(registerEndpoint, handler.NewRegistrationHandler(authService))
 	router.Handle(loginEndpoint, handler.NewAutentifiactionHandler(authService))

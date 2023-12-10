@@ -24,6 +24,7 @@ const createOrdersTableQuery = `CREATE TABLE IF NOT EXIST orders (
 	FOREIGN KEY ( user ) REFERENCES users ( login ) ON DELETE CASCADE,
 );`
 
-const addNewOrderQuery = `INSERT INTO orders (id, user) VALUES ($1, $2);`
+const createOrderQuery = `INSERT INTO orders (id, user) VALUES ($1, $2);`
 const updateOrderStatusQuery = `UPDATE orders SET status = $1 WHERE id = $2;`
-const getUserOrders = `SELECT id, status FROM orders WHERE user = $1`
+const getUserOrdersQuery = `SELECT id, status FROM orders WHERE user = $1;`
+const getOrderQuery = `SELECT * FROM orders WHERE id = $1 AND user = $2;`

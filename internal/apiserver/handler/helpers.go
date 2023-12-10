@@ -34,3 +34,23 @@ func readAuthCookie(r *http.Request) (string, error) {
 
 	return authorizationCookie.Value, nil
 }
+
+func validateOrderId(id string) bool {
+	sum := 0
+	parity := len(id) % 2
+
+	for i := 0; i < len(id); i++ {
+		digit := int(id[i] - '0')
+
+		if (i % 2) == parity {
+			digit *= 2
+			if digit > 9 {
+				digit -= 9
+			}
+		}
+
+		sum += digit
+	}
+
+	return (sum % 10) == 0
+}
