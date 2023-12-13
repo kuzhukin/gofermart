@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"gophermart/internal/zlog"
 	"time"
 
 	"github.com/jackc/pgerrcode"
@@ -31,7 +32,7 @@ const (
 )
 
 type Order struct {
-	Id     string
+	ID     string
 	User   string
 	Status OrderStatus
 }
@@ -125,6 +126,16 @@ func (c *Controller) FindUser(ctx context.Context, login string) (*User, error) 
 
 		return user, nil
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			zlog.Logger.Errorf("rows close err=%s", err)
+		}
+	}()
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	return nil, ErrUserIsNotFound
 }
@@ -146,6 +157,16 @@ func (c *Controller) FindUserByToken(ctx context.Context, token string) (*User, 
 
 		return user, nil
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			zlog.Logger.Errorf("rows close err=%s", err)
+		}
+	}()
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	return nil, ErrUserIsNotFound
 }
@@ -158,34 +179,43 @@ func (c *Controller) FindUserByToken(ctx context.Context, token string) (*User, 
 
 var ErrOrderIsNotFound = errors.New("order isn't found")
 
-func (c *Controller) FindOrder(ctx context.Context, login string, orderId string) (*Order, error) {
-	queryFunc := c.makeQueryFunc(ctx, getOrderQuery, []interface{}{orderId, login})
+func (c *Controller) FindOrder(ctx context.Context, login string, orderID string) (*Order, error) {
+	queryFunc := c.makeQueryFunc(ctx, getOrderQuery, []interface{}{orderID, login})
 
 	rows, err := doQuery(queryFunc)
 	if err != nil {
 		return nil, fmt.Errorf("do query, err=%w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			zlog.Logger.Errorf("rows close err=%s", err)
+		}
+	}()
 
 	order := &Order{}
 
 	if rows.Next() {
-		if err := rows.Scan(&order.Id, &order.Status, order.User); err != nil {
+		if err := rows.Scan(&order.ID, &order.Status, order.User); err != nil {
 			return nil, fmt.Errorf("rows scan to order err=%w", err)
 		}
 
 		return order, nil
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return nil, ErrOrderIsNotFound
 }
 
-func (c *Controller) CreateOrder(ctx context.Context, login string, orderId string) error {
-	execFunc := c.makeExecFunc(ctx, createOrderQuery, []interface{}{orderId, login})
+func (c *Controller) CreateOrder(ctx context.Context, login string, orderID string) error {
+	execFunc := c.makeExecFunc(ctx, createOrderQuery, []interface{}{orderID, login})
 
 	_, err := doQuery(execFunc)
 	if err != nil {
-		return fmt.Errorf("create user=%s, order=%s, err=%w", login, orderId, err)
+		return fmt.Errorf("create user=%s, order=%s, err=%w", login, orderID, err)
 	}
 
 	return nil

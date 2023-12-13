@@ -11,8 +11,8 @@ var ErrLoginConflict = errors.New("order login conflict")
 var ErrSavingError = errors.New("saving order error")
 
 type Storage interface {
-	HaveOrder(ctx context.Context, login string, orderId string) (bool, error)
-	SaveOrder(ctx context.Context, login string, orderId string) error
+	HaveOrder(ctx context.Context, login string, orderID string) (bool, error)
+	SaveOrder(ctx context.Context, login string, orderID string) error
 }
 
 type OrdersStorage struct {
@@ -25,20 +25,20 @@ func New(sqlCtrl *sql.Controller) *OrdersStorage {
 	}
 }
 
-func (s *OrdersStorage) HaveOrder(ctx context.Context, login string, orderId string) (bool, error) {
-	_, err := s.sqlCtrl.FindOrder(ctx, login, orderId)
+func (s *OrdersStorage) HaveOrder(ctx context.Context, login string, orderID string) (bool, error) {
+	_, err := s.sqlCtrl.FindOrder(ctx, login, orderID)
 	if err != nil {
 		if errors.Is(err, sql.ErrOrderIsNotFound) {
 			return false, nil
 		}
 
-		return false, fmt.Errorf("find order login=%s order=%s, err=%w", login, orderId, err)
+		return false, fmt.Errorf("find order login=%s order=%s, err=%w", login, orderID, err)
 	}
 
 	return true, nil
 }
-func (s *OrdersStorage) SaveOrder(ctx context.Context, login string, orderId string) error {
-	err := s.sqlCtrl.CreateOrder(ctx, login, orderId)
+func (s *OrdersStorage) SaveOrder(ctx context.Context, login string, orderID string) error {
+	err := s.sqlCtrl.CreateOrder(ctx, login, orderID)
 	if err != nil {
 		return fmt.Errorf("create order err=%w", err)
 	}

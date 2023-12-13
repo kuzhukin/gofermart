@@ -7,6 +7,6 @@ import (
 )
 
 func TestLunaValidation(t *testing.T) {
-	require.False(t, validateOrderId("4561261212345464"))
-	require.True(t, validateOrderId("4561261212345467"))
+	require.False(t, validateOrderID("4561261212345464"))
+	require.True(t, validateOrderID("4561261212345467"))
 }

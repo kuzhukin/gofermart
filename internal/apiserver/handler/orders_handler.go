@@ -84,7 +84,7 @@ func (h *OrdersHandler) serveLoadNewOrder(w http.ResponseWriter, r *http.Request
 
 		if errors.Is(err, ErrBadRequestFormat) {
 			w.WriteHeader(http.StatusBadRequest)
-		} else if errors.Is(err, ErrBadOrderId) {
+		} else if errors.Is(err, ErrBadOrderID) {
 			w.WriteHeader(http.StatusUnprocessableEntity)
 		} else if errors.Is(err, orderscontroller.ErrOrderRegistredByOtherUser) {
 			w.WriteHeader(http.StatusConflict)
@@ -103,12 +103,12 @@ func (h *OrdersHandler) serveLoadNewOrder(w http.ResponseWriter, r *http.Request
 }
 
 func (h *OrdersHandler) loadNewOrder(w http.ResponseWriter, r *http.Request, login string) (orderscontroller.OrderStatus, error) {
-	orderId, err := getOrderId(r)
+	orderID, err := getOrderID(r)
 	if err != nil {
 		return orderscontroller.OrderUnknownStatus, fmt.Errorf("get order id, err=%w", err)
 	}
 
-	status, err := h.orderscontroller.AddOrder(r.Context(), login, orderId)
+	status, err := h.orderscontroller.AddOrder(r.Context(), login, orderID)
 	if err != nil {
 		return orderscontroller.OrderUnknownStatus, fmt.Errorf("add order, err=%w", err)
 	}
@@ -116,43 +116,43 @@ func (h *OrdersHandler) loadNewOrder(w http.ResponseWriter, r *http.Request, log
 	return status, nil
 }
 
-var ErrBadOrderId = errors.New("bad order id")
+var ErrBadOrderID = errors.New("bad order id")
 var ErrBadRequestFormat = errors.New("can't read order id from body")
 
-func getOrderId(r *http.Request) (string, error) {
+func getOrderID(r *http.Request) (string, error) {
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		return "", errors.Join(ErrBadRequestFormat, err)
 	}
 
-	id, err := parseOrderId(data)
+	id, err := parseOrderID(data)
 	if err != nil {
-		return "", fmt.Errorf("parse orderId=%s, err=%w", string(data), err)
+		return "", fmt.Errorf("parse orderID=%s, err=%w", string(data), err)
 	}
 
 	return id, nil
 }
 
-func parseOrderId(data []byte) (string, error) {
-	orderId := string(data)
+func parseOrderID(data []byte) (string, error) {
+	orderID := string(data)
 
-	if len(orderId) == 0 {
+	if len(orderID) == 0 {
 		return "", ErrBadRequestFormat
 	}
 
 	// TODO: add validation bu luna's algorithm https://ru.wikipedia.org/wiki/%D0%90%D0%BB%D0%B3%D0%BE%D1%80%D0%B8%D1%82%D0%BC_%D0%9B%D1%83%D0%BD%D0%B0
 
-	for _, c := range orderId {
+	for _, c := range orderID {
 		if !unicode.IsDigit(c) {
-			return "", ErrBadOrderId
+			return "", ErrBadOrderID
 		}
 	}
 
-	if ok := validateOrderId(orderId); !ok {
-		return "", ErrBadOrderId
+	if ok := validateOrderID(orderID); !ok {
+		return "", ErrBadOrderID
 	}
 
-	return orderId, nil
+	return orderID, nil
 }
 
 func (h *OrdersHandler) serveGetOrderList(w http.ResponseWriter, r *http.Request, login string) {

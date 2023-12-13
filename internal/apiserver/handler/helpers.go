@@ -35,7 +35,7 @@ func readAuthCookie(r *http.Request) (string, error) {
 	return authorizationCookie.Value, nil
 }
 
-func validateOrderId(id string) bool {
+func validateOrderID(id string) bool {
 	sum := 0
 	parity := len(id) % 2
 
