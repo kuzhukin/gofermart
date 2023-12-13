@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"gophermart/internal/userdata"
@@ -9,7 +10,7 @@ import (
 )
 
 type UserAuthorizer interface {
-	Authorize(login string, password string) (string, error)
+	Authorize(ctx context.Context, login string, password string) (string, error)
 }
 
 var (
@@ -59,7 +60,7 @@ func (h *AutentifiactionHandler) handle(r *http.Request) (string, error) {
 		return "", err
 	}
 
-	key, err := h.authorizer.Authorize(userData.Login, userData.Password)
+	key, err := h.authorizer.Authorize(r.Context(), userData.Login, userData.Password)
 	if err != nil {
 		return "", fmt.Errorf("cann't authorize user with login=%s, err=%w", userData.Login, err)
 	}

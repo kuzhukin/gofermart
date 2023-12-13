@@ -1,30 +1,24 @@
 package authstorage
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"gophermart/internal/sql"
 )
 
-type Login = string
-type Password = string
-type Key = string
-
-type UserInfo struct {
-	Login    Login
-	Password Password
-	Key      Key
-}
+type User = sql.User
 
 type Storage interface {
-	SaveUserInfo(login Login, password Password, key Key) error
-	GetUserInfo(login Login) (*UserInfo, error)
-	GetUserInfoByKey(key Key) (*UserInfo, error)
+	SaveUser(ctx context.Context, login string, token string) error
+	GetUser(ctx context.Context, login string) (*User, error)
+	GetUserByToken(ctx context.Context, token string) (*User, error)
 }
 
 var _ Storage = &AuthStorageImpl{}
 
 var ErrIsAlreadySaved = errors.New("is already saved")
-var ErrIsNotContains = errors.New("isn't contains")
+var ErrIsNotContains = sql.ErrUserIsNotFound
 
 type AuthStorageImpl struct {
 	sqlController *sql.Controller
@@ -36,45 +30,33 @@ func New(ctrl *sql.Controller) *AuthStorageImpl {
 	}
 }
 
-func (s *AuthStorageImpl) SaveUserInfo(login Login, password Password, key Key) error {
-	// s.Lock()
-	// defer s.Unlock()
+func (s *AuthStorageImpl) SaveUser(ctx context.Context, login string, token string) error {
+	_, err := s.sqlController.FindUser(ctx, login)
+	if err != nil {
+		if errors.Is(err, sql.ErrUserIsNotFound) {
+			return s.sqlController.CreateUser(ctx, login, token)
+		}
 
-	// _, ok := s.login2Info[login]
-	// if ok {
-	// 	return ErrIsAlreadySaved
-	// }
+		return fmt.Errorf("find user=%s, err=%w", login, err)
+	}
 
-	// userInfo := &UserInfo{Login: login, Password: password, Key: key}
-	// s.login2Info[login] = userInfo
-	// s.key2Info[key] = userInfo
-
-	// return nil
-	return nil
+	return ErrIsAlreadySaved
 }
 
-func (s *AuthStorageImpl) GetUserInfo(login string) (*UserInfo, error) {
-	// s.Lock()
-	// defer s.Unlock()
+func (s *AuthStorageImpl) GetUser(ctx context.Context, login string) (*User, error) {
+	user, err := s.sqlController.FindUser(ctx, login)
+	if err != nil {
+		return nil, fmt.Errorf("find user=%s, err=%w", login, err)
+	}
 
-	// data, ok := s.login2Info[login]
-	// if !ok {
-	// 	return nil, ErrIsNotContains
-	// }
-
-	// return data, nil
-	return nil, nil
+	return user, nil
 }
 
-func (s *AuthStorageImpl) GetUserInfoByKey(key string) (*UserInfo, error) {
-	// s.Lock()
-	// defer s.Unlock()
+func (s *AuthStorageImpl) GetUserByToken(ctx context.Context, token string) (*User, error) {
+	user, err := s.sqlController.FindUserByToken(ctx, token)
+	if err != nil {
+		return nil, fmt.Errorf("find user by token=%s, err=%w", token, err)
+	}
 
-	// data, ok := s.key2Info[key]
-	// if !ok {
-	// 	return nil, ErrIsNotContains
-	// }
-
-	// return data, nil
-	return nil, nil
+	return user, nil
 }

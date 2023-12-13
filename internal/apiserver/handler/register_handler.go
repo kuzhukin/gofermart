@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"gophermart/internal/userdata"
@@ -11,7 +12,7 @@ import (
 type UserKey = string
 
 type UserRegistrator interface {
-	Register(login string, password string) (UserKey, error)
+	Register(ctx context.Context, login string, password string) (UserKey, error)
 }
 
 var (
@@ -61,7 +62,7 @@ func (h *RegistrationHandler) handle(r *http.Request) (UserKey, error) {
 		return "", err
 	}
 
-	userKey, err := h.registrator.Register(userData.Login, userData.Password)
+	userKey, err := h.registrator.Register(r.Context(), userData.Login, userData.Password)
 	if err != nil {
 		return "", fmt.Errorf("registration failed, err=%w", err)
 	}

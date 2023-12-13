@@ -7,9 +7,10 @@ const createUsersTableQuery = `CREATE TABLE IF NOT EXIST users (
 	PRIMARY KEY ( login )
 );`
 
-const addNewUserQuery = `INSERT INTO users (login, token) VALUES ($1, $2);`
+const createUserQuery = `INSERT INTO users (login, token) VALUES ($1, $2);`
 const getUserBalanceQuery = `SELECT balance FROM users WHERE login = $1;`
-const getUserToken = `SELECT token FROM users WHERE login = $1;`
+const getUser = `SELECT * FROM users WHERE login = $1;`
+const getUserByToken = `SELECT * FROM users WHERE token = $1;`
 const increaseUserBalanceQuery = `UPDATE users SET balance = balance + $1 WHERE login = $2;`
 const decreaseUserBalanceQuery = `UPDATE users SET balance = balance - $1 WHERE login = $2;`
 
@@ -28,3 +29,6 @@ const createOrderQuery = `INSERT INTO orders (id, user) VALUES ($1, $2);`
 const updateOrderStatusQuery = `UPDATE orders SET status = $1 WHERE id = $2;`
 const getUserOrdersQuery = `SELECT id, status FROM orders WHERE user = $1;`
 const getOrderQuery = `SELECT * FROM orders WHERE id = $1 AND user = $2;`
+
+// TODO:
+const createExecutedOrdersTableQuery = ``

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"gophermart/internal/orderscontroller"
@@ -14,7 +15,7 @@ var ErrUserIsNotAuthentificated = errors.New("user is not authentificated")
 var ErrUnsuportedMethod = errors.New("unsuported method")
 
 type AuthChecker interface {
-	Check(userKey string) (string, error)
+	Check(ctx context.Context, userKey string) (string, error)
 }
 
 type OrdersHandler struct {
@@ -57,7 +58,7 @@ func (h *OrdersHandler) checkUserAuthorization(r *http.Request) (string, error) 
 		return "", fmt.Errorf("read auth cookie, err=%w", err)
 	}
 
-	login, err := h.authChecker.Check(userKey)
+	login, err := h.authChecker.Check(r.Context(), userKey)
 	if err != nil {
 		return "", fmt.Errorf("check auth for cookie=%s, err=%w", userKey, err)
 	}

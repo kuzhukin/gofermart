@@ -91,6 +91,71 @@ func (c *Controller) exec(query string) error {
 	return nil
 }
 
+// ----------------------------------------------------------------------------------------------
+// ---------------------------------------- User Methods ----------------------------------------
+// ----------------------------------------------------------------------------------------------
+
+var ErrUserIsNotFound = errors.New("user isn't found")
+
+func (c *Controller) CreateUser(ctx context.Context, login string, token string) error {
+	queryFunc := c.makeExecFunc(ctx, createUserQuery, []interface{}{login, token})
+
+	_, err := doQuery(queryFunc)
+	if err != nil {
+		return fmt.Errorf("exec create user err=%w", err)
+	}
+
+	return nil
+}
+
+func (c *Controller) FindUser(ctx context.Context, login string) (*User, error) {
+	queryFunc := c.makeQueryFunc(ctx, getUser, []interface{}{login})
+
+	rows, err := doQuery(queryFunc)
+	if err != nil {
+		return nil, fmt.Errorf("do find user query err=%w", err)
+	}
+
+	user := &User{}
+
+	if rows.Next() {
+		if err := rows.Scan(&user.Login, &user.AuthToken, &user.Balance); err != nil {
+			return nil, fmt.Errorf("rows scan to user, err=%w", err)
+		}
+
+		return user, nil
+	}
+
+	return nil, ErrUserIsNotFound
+}
+
+func (c *Controller) FindUserByToken(ctx context.Context, token string) (*User, error) {
+	queryFunc := c.makeQueryFunc(ctx, getUserByToken, []interface{}{token})
+
+	rows, err := doQuery(queryFunc)
+	if err != nil {
+		return nil, fmt.Errorf("do find user by token query err=%w", err)
+	}
+
+	user := &User{}
+
+	if rows.Next() {
+		if err := rows.Scan(&user.Login, &user.AuthToken, &user.Balance); err != nil {
+			return nil, fmt.Errorf("rows scan to user, err=%w", err)
+		}
+
+		return user, nil
+	}
+
+	return nil, ErrUserIsNotFound
+}
+
+// func (c *Controller) Withdraw(ctx cont)
+
+// -----------------------------------------------------------------------------------------------
+// ------------------------------------- Orders handling API -------------------------------------
+// -----------------------------------------------------------------------------------------------
+
 var ErrOrderIsNotFound = errors.New("order isn't found")
 
 func (c *Controller) FindOrder(ctx context.Context, login string, orderId string) (*Order, error) {
@@ -106,7 +171,7 @@ func (c *Controller) FindOrder(ctx context.Context, login string, orderId string
 
 	if rows.Next() {
 		if err := rows.Scan(&order.Id, &order.Status, order.User); err != nil {
-			return nil, fmt.Errorf("rows scan err=%w", err)
+			return nil, fmt.Errorf("rows scan to order err=%w", err)
 		}
 
 		return order, nil
@@ -125,6 +190,10 @@ func (c *Controller) CreateOrder(ctx context.Context, login string, orderId stri
 
 	return nil
 }
+
+// ----------------------------------------------------------------------------------------------
+// -------------------------------------- Internal Methods --------------------------------------
+// ----------------------------------------------------------------------------------------------
 
 func (c *Controller) makeExecFunc(ctx context.Context, query string, args []interface{}) func() (*sql.Result, error) {
 	return func() (r *sql.Result, err error) {

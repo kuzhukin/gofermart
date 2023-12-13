@@ -1,6 +1,7 @@
 package authservice
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"gophermart/internal/apiserver/handler"
@@ -20,13 +21,13 @@ func NewAuthService(storage authstorage.Storage, cryptographer cryptographer.Cry
 	}
 }
 
-func (s *AuthService) Register(login string, password string) (string, error) {
+func (s *AuthService) Register(ctx context.Context, login string, password string) (string, error) {
 	key, err := s.calcUserKey(login, password)
 	if err != nil {
 		return "", err
 	}
 
-	if err := s.authStorage.SaveUserInfo(login, password, key); err != nil {
+	if err := s.authStorage.SaveUser(ctx, login, key); err != nil {
 		if errors.Is(authstorage.ErrIsAlreadySaved, err) {
 			return "", fmt.Errorf("user with login=%s already registred, err=%w", login, handler.ErrIsAlreadyRegistred)
 		}
@@ -37,8 +38,8 @@ func (s *AuthService) Register(login string, password string) (string, error) {
 	return key, nil
 }
 
-func (s *AuthService) Authorize(login string, password string) (string, error) {
-	userInfo, err := s.authStorage.GetUserInfo(login)
+func (s *AuthService) Authorize(ctx context.Context, login string, password string) (string, error) {
+	userInfo, err := s.authStorage.GetUser(ctx, login)
 	if err != nil {
 		if errors.Is(err, authstorage.ErrIsNotContains) {
 			return "", fmt.Errorf("wasn't registred, err=%w", handler.ErrIsNotAutorized)
@@ -47,15 +48,20 @@ func (s *AuthService) Authorize(login string, password string) (string, error) {
 		return "", fmt.Errorf("get user info login=%s, err=%w", login, err)
 	}
 
-	if userInfo.Password != password {
+	key, err := s.calcUserKey(login, password)
+	if err != nil {
+		return "", err
+	}
+
+	if userInfo.AuthToken != key {
 		return "", fmt.Errorf("bad password, err=%w", handler.ErrIsNotAutorized)
 	}
 
-	return userInfo.Key, nil
+	return userInfo.AuthToken, nil
 }
 
-func (s *AuthService) Check(userKey string) (string, error) {
-	info, err := s.authStorage.GetUserInfoByKey(userKey)
+func (s *AuthService) Check(ctx context.Context, userKey string) (string, error) {
+	info, err := s.authStorage.GetUserByToken(ctx, userKey)
 	if errors.Is(err, authstorage.ErrIsNotContains) {
 		return "", fmt.Errorf("wasn't registred, err=%w", handler.ErrIsNotAutorized)
 	}
