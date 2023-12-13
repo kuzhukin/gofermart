@@ -40,8 +40,8 @@ lint:
 	$(LINTER) --version
 	$(LINTER) cache clean && $(LINTER) run
 
-run:
-	cmd/gophermart/gophermart -a localhost:8080 -d fakeDbUri -r fakeAccuralAddr
+run: build
+	cmd/gophermart/gophermart -a localhost:8080 -d "postgres://gophermart:12345@127.0.0.1:5432/praktikum" -r "localhost:33555"
 
 generate:
 	go generate ./...

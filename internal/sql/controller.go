@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 const (
@@ -69,6 +70,7 @@ func (c *Controller) init() error {
 	createTableQueries := []string{
 		createUsersTableQuery,
 		createOrdersTableQuery,
+		createWithdrawalsTableQuery,
 	}
 
 	for _, q := range createTableQueries {
