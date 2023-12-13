@@ -62,8 +62,12 @@ func (s *AuthService) Authorize(ctx context.Context, login string, password stri
 
 func (s *AuthService) Check(ctx context.Context, userKey string) (string, error) {
 	info, err := s.authStorage.GetUserByToken(ctx, userKey)
-	if errors.Is(err, authstorage.ErrIsNotContains) {
-		return "", fmt.Errorf("wasn't registred, err=%w", handler.ErrIsNotAutorized)
+	if err != nil {
+		if errors.Is(err, authstorage.ErrIsNotContains) {
+			return "", fmt.Errorf("wasn't registred, err=%w", handler.ErrIsNotAutorized)
+		}
+
+		return "", err
 	}
 
 	return info.Login, nil

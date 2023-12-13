@@ -3,8 +3,8 @@ package orderscontroller
 import (
 	"context"
 	"errors"
-	"fmt"
 	"gophermart/internal/orderscontroller/ordersstorage"
+	"gophermart/internal/sql"
 )
 
 type OrderStatus int
@@ -28,22 +28,13 @@ func NewOrdersController(storage ordersstorage.Storage) *OrdersController {
 }
 
 func (c *OrdersController) AddOrder(ctx context.Context, login string, orderID string) (OrderStatus, error) {
-	ok, err := c.storage.HaveOrder(ctx, login, orderID)
-	if err != nil {
-		if errors.Is(err, ordersstorage.ErrLoginConflict) {
-			return OrderUnknownStatus, ErrOrderRegistredByOtherUser
+	if err := c.storage.SaveOrder(ctx, login, orderID); err != nil {
+		if errors.Is(err, sql.ErrOrderAlreadyExist) {
+			return OrderAlreadyExistsStatus, nil
 		}
 
-		return OrderUnknownStatus, fmt.Errorf("have order, err=%w", err)
+		return OrderUnknownStatus, err
 	}
 
-	if ok {
-		return OrderAlreadyExistsStatus, nil
-	}
-
-	if err := c.storage.SaveOrder(ctx, login, orderID); err != nil {
-		return OrderUnknownStatus, fmt.Errorf("save order, err=%w", err)
-	}
-
-	return OrderAlreadyExistsStatus, nil
+	return OrderCreatedStatus, nil
 }

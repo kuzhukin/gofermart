@@ -7,9 +7,6 @@ import (
 	"gophermart/internal/sql"
 )
 
-var ErrLoginConflict = errors.New("order login conflict")
-var ErrSavingError = errors.New("saving order error")
-
 type Storage interface {
 	HaveOrder(ctx context.Context, login string, orderID string) (bool, error)
 	SaveOrder(ctx context.Context, login string, orderID string) error

@@ -180,6 +180,7 @@ func (c *Controller) FindUserByToken(ctx context.Context, token string) (*User, 
 // -----------------------------------------------------------------------------------------------
 
 var ErrOrderIsNotFound = errors.New("order isn't found")
+var ErrOrderAlreadyExist = errors.New("order already exist")
 
 func (c *Controller) FindOrder(ctx context.Context, login string, orderID string) (*Order, error) {
 	queryFunc := c.makeQueryFunc(ctx, getOrderQuery, []interface{}{orderID, login})
@@ -217,6 +218,10 @@ func (c *Controller) CreateOrder(ctx context.Context, login string, orderID stri
 
 	_, err := doQuery(execFunc)
 	if err != nil {
+		if IsNotUniqueError(err) {
+			return ErrOrderAlreadyExist
+		}
+
 		return fmt.Errorf("create user=%s, order=%s, err=%w", login, orderID, err)
 	}
 
@@ -287,5 +292,11 @@ func doQuery[T any](queryFunc func() (*T, error)) (*T, error) {
 func isRetriableError(err error) bool {
 	var pgErr *pgconn.PgError
 
-	return errors.As(err, &pgErr) && (pgerrcode.IsIntegrityConstraintViolation(pgErr.Code) || pgerrcode.IsConnectionException(pgErr.Code))
+	return errors.As(err, &pgErr) && pgerrcode.IsConnectionException(pgErr.Code)
+}
+
+func IsNotUniqueError(err error) bool {
+	var pgErr *pgconn.PgError
+
+	return errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation
 }
