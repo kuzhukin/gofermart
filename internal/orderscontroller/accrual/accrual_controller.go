@@ -118,7 +118,7 @@ func (c *AccrualController) checkOrdersStatus(ctx context.Context, orders []*sql
 
 		accrualResponse, err := c.client.UpdateOrderStatus(ctx, order.ID)
 		if err != nil {
-			zlog.Logger.Errorf("accrual order=%s, err=%s", order.ID, err)
+			zlog.Logger.Infof("accrual order=%s, err=%s", order.ID, err)
 			continue
 		}
 

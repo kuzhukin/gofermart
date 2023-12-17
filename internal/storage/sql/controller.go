@@ -339,11 +339,11 @@ func (c *Controller) UpdateAccrual(ctx context.Context, order *Order) error {
 		return nil
 	}
 
-	if _, err := updateOrderStmt.ExecContext(ctx, []interface{}{order.Status, order.Accrual, order.ID}); err != nil {
+	if _, err := updateOrderStmt.ExecContext(ctx, order.Status, order.Accrual, order.ID); err != nil {
 		return err
 	}
 
-	if _, err := updateBalanceStmt.ExecContext(ctx, []interface{}{order.Accrual, order.User}); err != nil {
+	if _, err := updateBalanceStmt.ExecContext(ctx, order.Accrual, order.User); err != nil {
 		return err
 	}
 
