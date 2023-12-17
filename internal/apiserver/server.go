@@ -92,7 +92,7 @@ func (s *GophermartServer) initHTTPServer(addr string) {
 	router.Handle(ordersEndpoint, handler.NewOrdersHandler(s.authService, s.ordersCtrl))
 	router.Handle(balanceEndpoint, handler.NewBalanceHandler(s.authService, s.balanceCtrl))
 	router.Handle(balanceWithdrawEndpoint, handler.NewBalanceWithdrawHandler())
-	router.Handle(allWithdrawalsEndpoint, handler.NewWithdrawalsHandler())
+	router.Handle(allWithdrawalsEndpoint, handler.NewWithdrawalsHandler(s.authService, s.balanceCtrl))
 
 	s.srvr = http.Server{Addr: addr, Handler: router}
 }

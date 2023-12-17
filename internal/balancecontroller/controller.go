@@ -2,9 +2,12 @@ package balancecontroller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"gophermart/internal/sql"
 )
+
+var ErrNotEnoughFundsInTheAccount = errors.New("there are not enough funds in the account")
 
 type Controller struct {
 	sqlController *sql.Controller
@@ -33,5 +36,5 @@ func (c *Controller) GetBalnce(ctx context.Context, login string) (*BalanceRespo
 }
 
 func (c *Controller) Withdraw(ctx context.Context, login string, orderID string, amount float32) error {
-	return nil
+	return ErrNotEnoughFundsInTheAccount
 }

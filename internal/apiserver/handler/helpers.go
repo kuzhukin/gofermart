@@ -37,6 +37,7 @@ func readAuthCookie(r *http.Request) (string, error) {
 
 var ErrUserIsNotAuthentificated = errors.New("useris not authentificated")
 
+// returning login and err if user is not exist
 func checkUserAuthorization(r *http.Request, checker AuthChecker) (string, error) {
 	userKey, err := readAuthCookie(r)
 	if err != nil {

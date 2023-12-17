@@ -27,7 +27,7 @@ func (h *BalanceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := h.handle(w, r)
+	data, err := h.handle(r)
 	if err != nil {
 		zlog.Logger.Errorf("handle get balance, err=%s", err)
 
@@ -46,7 +46,7 @@ func (h *BalanceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *BalanceHandler) handle(w http.ResponseWriter, r *http.Request) ([]byte, error) {
+func (h *BalanceHandler) handle(r *http.Request) ([]byte, error) {
 	login, err := checkUserAuthorization(r, h.authChecker)
 	if err != nil {
 		return nil, err
