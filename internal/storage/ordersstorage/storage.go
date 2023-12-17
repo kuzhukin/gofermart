@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"gophermart/internal/sql"
+	"gophermart/internal/storage/sql"
 )
 
 type Storage interface {
 	HaveOrder(ctx context.Context, login string, orderID string) (bool, error)
 	SaveOrder(ctx context.Context, login string, orderID string) error
-	GetAllOrders(ctx context.Context, login string) ([]*sql.Order, error)
+	GetUserOrders(ctx context.Context, login string) ([]*sql.Order, error)
+	GetUnexecutedOrders(ctx context.Context) ([]*sql.Order, error)
 }
 
 type OrdersStorage struct {
@@ -45,10 +46,19 @@ func (s *OrdersStorage) SaveOrder(ctx context.Context, login string, orderID str
 	return nil
 }
 
-func (s *OrdersStorage) GetAllOrders(ctx context.Context, login string) ([]*sql.Order, error) {
-	orders, err := s.sqlCtrl.GetAllOrders(ctx, login)
+func (s *OrdersStorage) GetUserOrders(ctx context.Context, login string) ([]*sql.Order, error) {
+	orders, err := s.sqlCtrl.GetUserOrders(ctx, login)
 	if err != nil {
 		return nil, fmt.Errorf("get orders for user=%s, err=%w", login, err)
+	}
+
+	return orders, nil
+}
+
+func (s *OrdersStorage) GetUnexecutedOrders(ctx context.Context) ([]*sql.Order, error) {
+	orders, err := s.sqlCtrl.GetUnexecutedOrders(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get all orders err=%w", err)
 	}
 
 	return orders, nil

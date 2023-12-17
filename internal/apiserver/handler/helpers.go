@@ -2,18 +2,17 @@ package handler
 
 import (
 	"fmt"
-	"gophermart/internal/userdata"
 	"io"
 	"net/http"
 )
 
-func readUserDataFromRequest(r *http.Request) (*userdata.AuthInfo, error) {
+func readAuthInfoFromRequest(r *http.Request) (*AuthInfo, error) {
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read from body err=%w", err)
 	}
 
-	userData := userdata.NewUserData()
+	userData := NewAuthInfo()
 	if err := userData.Desirialize(data); err != nil {
 		return nil, fmt.Errorf("user data desirialize, err=%w", err)
 	}

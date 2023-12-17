@@ -3,8 +3,8 @@ package orderscontroller
 import (
 	"context"
 	"errors"
-	"gophermart/internal/orderscontroller/ordersstorage"
-	"gophermart/internal/sql"
+	"gophermart/internal/storage/ordersstorage"
+	"gophermart/internal/storage/sql"
 )
 
 type OrderStatus int
@@ -41,7 +41,7 @@ func (c *OrdersController) AddOrder(ctx context.Context, login string, orderID s
 }
 
 func (c *OrdersController) GerOrders(ctx context.Context, login string) ([]*sql.Order, error) {
-	orders, err := c.storage.GetAllOrders(ctx, login)
+	orders, err := c.storage.GetUserOrders(ctx, login)
 	if err != nil {
 		return nil, err
 	}

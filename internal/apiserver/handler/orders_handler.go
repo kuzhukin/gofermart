@@ -168,8 +168,12 @@ func (h *OrdersHandler) serveGetOrderList(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(data)
+
+	if _, err := w.Write(data); err != nil {
+		zlog.Logger.Errorf("err write orders, err=%s", err)
+	}
 }
 
 func (h *OrdersHandler) getUserOrders(r *http.Request, login string) ([]byte, error) {

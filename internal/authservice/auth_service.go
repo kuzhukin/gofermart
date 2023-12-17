@@ -5,18 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"gophermart/internal/apiserver/handler"
-	"gophermart/internal/authservice/authstorage"
 	"gophermart/internal/authservice/cryptographer"
+	"gophermart/internal/storage/userstorage"
 )
 
 type AuthService struct {
-	authStorage   authstorage.Storage
+	userStorage   userstorage.Storage
 	cryptographer cryptographer.Cryptographer
 }
 
-func NewAuthService(storage authstorage.Storage, cryptographer cryptographer.Cryptographer) *AuthService {
+func NewAuthService(storage userstorage.Storage, cryptographer cryptographer.Cryptographer) *AuthService {
 	return &AuthService{
-		authStorage:   storage,
+		userStorage:   storage,
 		cryptographer: cryptographer,
 	}
 }
@@ -27,8 +27,8 @@ func (s *AuthService) Register(ctx context.Context, login string, password strin
 		return "", err
 	}
 
-	if err := s.authStorage.SaveUser(ctx, login, key); err != nil {
-		if errors.Is(authstorage.ErrIsAlreadySaved, err) {
+	if err := s.userStorage.SaveUser(ctx, login, key); err != nil {
+		if errors.Is(userstorage.ErrIsAlreadySaved, err) {
 			return "", fmt.Errorf("user with login=%s already registred, err=%w", login, handler.ErrIsAlreadyRegistred)
 		}
 
@@ -39,9 +39,9 @@ func (s *AuthService) Register(ctx context.Context, login string, password strin
 }
 
 func (s *AuthService) Authorize(ctx context.Context, login string, password string) (string, error) {
-	userInfo, err := s.authStorage.GetUser(ctx, login)
+	userInfo, err := s.userStorage.GetUser(ctx, login)
 	if err != nil {
-		if errors.Is(err, authstorage.ErrIsNotContains) {
+		if errors.Is(err, userstorage.ErrIsNotContains) {
 			return "", fmt.Errorf("wasn't registred, err=%w", handler.ErrIsNotAutorized)
 		}
 
@@ -61,9 +61,9 @@ func (s *AuthService) Authorize(ctx context.Context, login string, password stri
 }
 
 func (s *AuthService) Check(ctx context.Context, userKey string) (string, error) {
-	info, err := s.authStorage.GetUserByToken(ctx, userKey)
+	info, err := s.userStorage.GetUserByToken(ctx, userKey)
 	if err != nil {
-		if errors.Is(err, authstorage.ErrIsNotContains) {
+		if errors.Is(err, userstorage.ErrIsNotContains) {
 			return "", fmt.Errorf("wasn't registred, err=%w", handler.ErrIsNotAutorized)
 		}
 

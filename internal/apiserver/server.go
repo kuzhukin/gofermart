@@ -6,12 +6,15 @@ import (
 	"gophermart/internal/apiserver/handler"
 	"gophermart/internal/apiserver/middleware"
 	"gophermart/internal/authservice"
-	"gophermart/internal/authservice/authstorage"
 	"gophermart/internal/authservice/cryptographer"
+	"gophermart/internal/balancecontroller"
 	"gophermart/internal/config"
 	"gophermart/internal/orderscontroller"
-	"gophermart/internal/orderscontroller/ordersstorage"
-	"gophermart/internal/sql"
+	"gophermart/internal/orderscontroller/accrual"
+	"gophermart/internal/storage/accrualstorage"
+	"gophermart/internal/storage/ordersstorage"
+	"gophermart/internal/storage/sql"
+	"gophermart/internal/storage/userstorage"
 	"gophermart/internal/zlog"
 	"net/http"
 	"time"
@@ -20,8 +23,14 @@ import (
 )
 
 type GophermartServer struct {
-	srvr    http.Server
-	sqlCtrl *sql.Controller
+	srvr http.Server
+
+	sqlCtrl     *sql.Controller
+	accrualCtrl *accrual.AccrualController
+
+	authService *authservice.AuthService
+	ordersCtrl  *orderscontroller.OrdersController
+	balanceCtrl *balancecontroller.Controller
 
 	waitingShutdownCh chan struct{}
 }
@@ -42,51 +51,55 @@ func StartNew() (*GophermartServer, error) {
 }
 
 func newServer(config *config.Config) (*GophermartServer, error) {
-	router := chi.NewRouter()
-
-	registerMiddlewares(router)
 
 	sqlController, err := sql.StartNewController(config.DatabaseURI)
 	if err != nil {
 		return nil, fmt.Errorf("start new sql controller, err=%w", err)
 	}
 
-	if err := registerHandlers(router, sqlController); err != nil {
-		return nil, err
-	}
+	userStorage := userstorage.New(sqlController)
+	orderStorage := ordersstorage.New(sqlController)
+	accrualStorage := accrualstorage.New(sqlController)
 
-	return &GophermartServer{
-		srvr: http.Server{
-			Addr:    config.RunAddress,
-			Handler: router,
-		},
-		sqlCtrl:           sqlController,
-		waitingShutdownCh: make(chan struct{}),
-	}, nil
-}
-
-func registerMiddlewares(router *chi.Mux) {
-	router.Use(middleware.LoggingHTTPHandler)
-}
-
-func registerHandlers(router *chi.Mux, sqlCtrl *sql.Controller) error {
-	storage := authstorage.New(sqlCtrl)
 	cryptographer, err := cryptographer.NewAesCryptographer()
 	if err != nil {
-		return fmt.Errorf("new aes cryptographer, err=%w", err)
+		return nil, fmt.Errorf("new aes cryptographer, err=%w", err)
 	}
 
-	authService := authservice.NewAuthService(storage, cryptographer)
-	ordersController := orderscontroller.NewOrdersController(ordersstorage.New(sqlCtrl))
+	authService := authservice.NewAuthService(userStorage, cryptographer)
+	ordersCtrl := orderscontroller.NewOrdersController(orderStorage)
+	balancecCtrl := balancecontroller.New(userStorage)
 
-	router.Handle(registerEndpoint, handler.NewRegistrationHandler(authService))
-	router.Handle(loginEndpoint, handler.NewAutentifiactionHandler(authService))
-	router.Handle(ordersEndpoint, handler.NewOrdersHandler(authService, ordersController))
-	router.Handle(balanceEndpoint, handler.NewBalanceHandler())
+	accrualCtrl := accrual.StartNewController(orderStorage, accrualStorage, config.AccrualAddress)
+
+	server := &GophermartServer{
+		sqlCtrl:           sqlController,
+		accrualCtrl:       accrualCtrl,
+		authService:       authService,
+		ordersCtrl:        ordersCtrl,
+		balanceCtrl:       balancecCtrl,
+		waitingShutdownCh: make(chan struct{}),
+	}
+
+	server.initHTTPServer(config.RunAddress)
+
+	return server, nil
+
+}
+
+func (s *GophermartServer) initHTTPServer(addr string) {
+	router := chi.NewRouter()
+
+	router.Use(middleware.LoggingHTTPHandler)
+
+	router.Handle(registerEndpoint, handler.NewRegistrationHandler(s.authService))
+	router.Handle(loginEndpoint, handler.NewAutentifiactionHandler(s.authService))
+	router.Handle(ordersEndpoint, handler.NewOrdersHandler(s.authService, s.ordersCtrl))
+	router.Handle(balanceEndpoint, handler.NewBalanceHandler(s.authService, s.balanceCtrl))
 	router.Handle(balanceWithdrawEndpoint, handler.NewBalanceWithdrawHandler())
 	router.Handle(allWithdrawalsEndpoint, handler.NewWithdrawalsHandler())
 
-	return nil
+	s.srvr = http.Server{Addr: addr, Handler: router}
 }
 
 func (s *GophermartServer) start(hostport string) {

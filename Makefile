@@ -47,5 +47,8 @@ run:
 	sleep 5 && \
 	cmd/gophermart/gophermart -a localhost:8080 -d "postgres://gophermart:12345@127.0.0.1:5431/gophermart" -r "localhost:33555"
 
+run_accrual:
+	cmd/accrual/accrual_linux_amd64 -a "localhost:33555"
+
 generate:
 	go generate ./...

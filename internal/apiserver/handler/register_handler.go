@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"gophermart/internal/userdata"
 	"gophermart/internal/zlog"
 	"net/http"
 )
@@ -41,7 +40,7 @@ func (h *RegistrationHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		zlog.Logger.Infof("Handle request was failed with err=%s", err)
 
-		if errors.Is(err, userdata.ErrDesirializeUserData) || errors.Is(err, userdata.ErrBadUserData) {
+		if errors.Is(err, ErrDesirializeAuthInfo) || errors.Is(err, ErrBadAuthInfo) {
 			w.WriteHeader(http.StatusBadRequest)
 		} else if errors.Is(err, ErrIsAlreadyRegistred) {
 			w.WriteHeader(http.StatusConflict)
@@ -57,7 +56,7 @@ func (h *RegistrationHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *RegistrationHandler) handle(r *http.Request) (UserKey, error) {
-	userData, err := readUserDataFromRequest(r)
+	userData, err := readAuthInfoFromRequest(r)
 	if err != nil {
 		return "", err
 	}

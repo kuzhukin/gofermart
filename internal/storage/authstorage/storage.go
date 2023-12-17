@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"gophermart/internal/sql"
+	"gophermart/internal/storage/sql"
 )
 
 type User = sql.User

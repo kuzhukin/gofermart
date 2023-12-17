@@ -19,9 +19,10 @@ const (
 	createUserTimeout = time.Second * 1
 	getUserTimeout    = time.Second * 1
 
-	getOrderTimeout     = time.Second * 1
-	getAllOrdersTimeout = time.Second * 10
-	createOrderTimeout  = time.Second * 1
+	getOrderTimeout           = time.Second * 1
+	getAllOrdersTimeout       = time.Second * 10
+	createOrderTimeout        = time.Second * 1
+	updateOrderAccrualTimeout = time.Second * 2
 )
 
 type Controller struct {
@@ -41,14 +42,14 @@ type Order struct {
 	ID           string      `json:"id"`
 	User         string      `json:"user"`
 	Status       OrderStatus `json:"status"`
-	Accural      int64       `json:"accural,omitempty"`
+	Accrual      float64     `json:"accrual,omitempty"`
 	UpdaloadTime string      `json:"uploaded_at"`
 }
 
 type User struct {
 	Login     string
 	AuthToken string
-	Balance   uint64
+	Balance   float64
 }
 
 func StartNewController(dataSourceName string) (*Controller, error) {
@@ -195,7 +196,7 @@ func (c *Controller) FindUserByToken(ctx context.Context, token string) (*User, 
 // ------------------------------------- Orders handling API -------------------------------------
 // -----------------------------------------------------------------------------------------------
 
-const DATE_TIME_FORMAT = "2006-01-02T15:04:05"
+const TimestampFormat = "2006-01-02T15:04:05"
 
 var ErrOrderIsNotFound = errors.New("order isn't found")
 var ErrOrderAlreadyExist = errors.New("order already exist")
@@ -252,7 +253,7 @@ func (c *Controller) CreateOrder(ctx context.Context, login string, orderID stri
 	return nil
 }
 
-func (c *Controller) GetAllOrders(ctx context.Context, login string) ([]*Order, error) {
+func (c *Controller) GetUserOrders(ctx context.Context, login string) ([]*Order, error) {
 	ctx, cancel := context.WithTimeout(ctx, getAllOrdersTimeout)
 	defer cancel()
 
@@ -266,7 +267,7 @@ func (c *Controller) GetAllOrders(ctx context.Context, login string) ([]*Order, 
 	orders := make([]*Order, 0)
 	for rows.Next() {
 		order := &Order{}
-		err := rows.Scan(&order.ID, &order.Status, &order.Accural, &order.User, &order.UpdaloadTime)
+		err := rows.Scan(&order.ID, &order.Status, &order.Accrual, &order.User, &order.UpdaloadTime)
 		if err != nil {
 			return nil, fmt.Errorf("scan rows, err=%w", err)
 		}
@@ -282,6 +283,71 @@ func (c *Controller) GetAllOrders(ctx context.Context, login string) ([]*Order, 
 	}
 
 	return orders, nil
+}
+
+func (c *Controller) GetUnexecutedOrders(ctx context.Context) ([]*Order, error) {
+	ctx, cancel := context.WithTimeout(ctx, getAllOrdersTimeout)
+	defer cancel()
+
+	queryFunc := c.makeQueryFunc(ctx, getUnexecutedOrdersQuery, []interface{}{}, getAllOrdersTimeout)
+
+	rows, err := doQuery(queryFunc)
+	if err != nil {
+		return nil, fmt.Errorf("get unexecuted orders query, err=%w", err)
+	}
+
+	orders := make([]*Order, 0)
+	for rows.Next() {
+		order := &Order{}
+		err := rows.Scan(&order.ID, &order.Status, &order.Accrual, &order.User, &order.UpdaloadTime)
+		if err != nil {
+			return nil, fmt.Errorf("scan rows, err=%w", err)
+		}
+
+		// TODO: time formatting
+
+		orders = append(orders, order)
+	}
+	defer rows.Close()
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return orders, nil
+}
+
+func (c *Controller) UpdateAccrual(ctx context.Context, order *Order) error {
+	ctx, cancel := context.WithTimeout(ctx, updateOrderAccrualTimeout)
+	defer cancel()
+
+	tx, err := c.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSnapshot})
+	if err != nil {
+		return fmt.Errorf("begin tx err=%w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	updateOrderStmt, err := tx.PrepareContext(ctx, updateOrderAccrualQuery)
+	if err != nil {
+		return nil
+	}
+
+	updateBalanceStmt, err := tx.PrepareContext(ctx, increaseUserBalanceQuery)
+	if err != nil {
+		return nil
+	}
+
+	if _, err := updateOrderStmt.ExecContext(ctx, []interface{}{order.Status, order.Accrual, order.ID}); err != nil {
+		return err
+	}
+
+	if _, err := updateBalanceStmt.ExecContext(ctx, []interface{}{order.Accrual, order.User}); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 // ----------------------------------------------------------------------------------------------

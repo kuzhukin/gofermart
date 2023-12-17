@@ -1,4 +1,4 @@
-package userdata
+package handler
 
 import (
 	"encoding/json"
@@ -6,8 +6,8 @@ import (
 )
 
 var (
-	ErrDesirializeUserData = errors.New("auth info desirialization failed")
-	ErrBadUserData         = errors.New("login or password isn't correct")
+	ErrDesirializeAuthInfo = errors.New("auth info desirialization failed")
+	ErrBadAuthInfo         = errors.New("login or password isn't correct")
 )
 
 type AuthInfo struct {
@@ -15,7 +15,7 @@ type AuthInfo struct {
 	Password string `json:"password"`
 }
 
-func NewUserData() *AuthInfo {
+func NewAuthInfo() *AuthInfo {
 	return &AuthInfo{}
 }
 
@@ -25,11 +25,11 @@ func (m *AuthInfo) Serialize() ([]byte, error) {
 
 func (m *AuthInfo) Desirialize(data []byte) error {
 	if err := json.Unmarshal(data, m); err != nil {
-		return errors.Join(ErrDesirializeUserData, err)
+		return errors.Join(ErrDesirializeAuthInfo, err)
 	}
 
 	if m.Login == "" || m.Password == "" {
-		return ErrDesirializeUserData
+		return ErrDesirializeAuthInfo
 	}
 
 	return nil

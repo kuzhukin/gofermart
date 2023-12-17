@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"gophermart/internal/userdata"
 	"gophermart/internal/zlog"
 	"net/http"
 )
@@ -39,7 +38,7 @@ func (h *AutentifiactionHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		zlog.Logger.Infof("Handle request was failed with err=%s", err)
 
-		if errors.Is(err, userdata.ErrDesirializeUserData) {
+		if errors.Is(err, ErrDesirializeAuthInfo) {
 			w.WriteHeader(http.StatusBadRequest)
 		} else if errors.Is(err, ErrIsNotAutorized) {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -55,7 +54,7 @@ func (h *AutentifiactionHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *AutentifiactionHandler) handle(r *http.Request) (string, error) {
-	userData, err := readUserDataFromRequest(r)
+	userData, err := readAuthInfoFromRequest(r)
 	if err != nil {
 		return "", err
 	}

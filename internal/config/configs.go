@@ -11,7 +11,7 @@ import (
 var (
 	ErrRunAddressIsNotSet           = errors.New("servers's addres is not set")
 	ErrDatabaseURIIsNotSet          = errors.New("servers's database's URI is not set")
-	ErrAccuralSystemAddressIsNotSet = errors.New("accural system's address is not set")
+	ErrAccrualSystemAddressIsNotSet = errors.New("accrual system's address is not set")
 )
 
 type Config struct {
@@ -25,7 +25,7 @@ func Make() (*Config, error) {
 
 	flag.StringVar(&config.RunAddress, "a", "", "Server's host:port")
 	flag.StringVar(&config.DatabaseURI, "d", "", "Database uri")
-	flag.StringVar(&config.AccrualAddress, "r", "", "Accural system's address")
+	flag.StringVar(&config.AccrualAddress, "r", "", "Accrual system's address")
 	flag.Parse()
 
 	if err := env.Parse(&config); err != nil {
@@ -43,7 +43,7 @@ func Make() (*Config, error) {
 	}
 
 	if config.AccrualAddress == "" {
-		err = errors.Join(err, ErrAccuralSystemAddressIsNotSet)
+		err = errors.Join(err, ErrAccrualSystemAddressIsNotSet)
 	}
 
 	if err != nil {
