@@ -22,13 +22,13 @@ const (
 		"status"		text					NOT NULL,
 		"accrual"		double precision		NOT NULL,
 		"user"			text					NOT NULL,
-		"upload_time"	timestamp 				NOT NULL,
+		"upload_time"	text 					NOT NULL,
 		PRIMARY KEY ("id"),
 		CHECK ( "status" IN ( 'NEW', 'PROCESSING', 'INVALID', 'PROCESSED') ),
 		FOREIGN KEY ( "user" ) REFERENCES users ( "login" ) ON DELETE CASCADE
 	);`
 
-	createOrderQuery = `INSERT INTO orders ("id", "user", "status", "accrual", "upload_time") VALUES ($1, $2, 'NEW', 0, current_timestamp);`
+	createOrderQuery = `INSERT INTO orders ("id", "user", "status", "accrual", "upload_time") VALUES ($1, $2, 'NEW', 0, $3);`
 
 	updateOrderAccrualQuery = `UPDATE orders SET status = $1, accrual = $2 WHERE id = $3;`
 

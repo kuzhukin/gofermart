@@ -239,7 +239,9 @@ func (c *Controller) CreateOrder(ctx context.Context, login string, orderID stri
 	ctx, cancel := context.WithTimeout(ctx, createOrderTimeout)
 	defer cancel()
 
-	execFunc := c.makeExecFunc(ctx, createOrderQuery, []interface{}{orderID, login})
+	uploadAt := time.Now().Format(time.RFC3339)
+
+	execFunc := c.makeExecFunc(ctx, createOrderQuery, []interface{}{orderID, login, uploadAt})
 
 	_, err := doQuery(execFunc)
 	if err != nil {
@@ -272,8 +274,6 @@ func (c *Controller) GetUserOrders(ctx context.Context, login string) ([]*Order,
 			return nil, fmt.Errorf("scan rows, err=%w", err)
 		}
 
-		// TODO: time formatting
-
 		orders = append(orders, order)
 	}
 	defer rows.Close()
@@ -303,8 +303,6 @@ func (c *Controller) GetUnexecutedOrders(ctx context.Context) ([]*Order, error) 
 		if err != nil {
 			return nil, fmt.Errorf("scan rows, err=%w", err)
 		}
-
-		// TODO: time formatting
 
 		orders = append(orders, order)
 	}
