@@ -10,6 +10,7 @@ import (
 type Storage interface {
 	HaveOrder(ctx context.Context, login string, orderID string) (bool, error)
 	SaveOrder(ctx context.Context, login string, orderID string) error
+	GetAllOrders(ctx context.Context, login string) ([]*sql.Order, error)
 }
 
 type OrdersStorage struct {
@@ -34,6 +35,7 @@ func (s *OrdersStorage) HaveOrder(ctx context.Context, login string, orderID str
 
 	return true, nil
 }
+
 func (s *OrdersStorage) SaveOrder(ctx context.Context, login string, orderID string) error {
 	err := s.sqlCtrl.CreateOrder(ctx, login, orderID)
 	if err != nil {
@@ -41,4 +43,13 @@ func (s *OrdersStorage) SaveOrder(ctx context.Context, login string, orderID str
 	}
 
 	return nil
+}
+
+func (s *OrdersStorage) GetAllOrders(ctx context.Context, login string) ([]*sql.Order, error) {
+	orders, err := s.sqlCtrl.GetAllOrders(ctx, login)
+	if err != nil {
+		return nil, fmt.Errorf("get orders for user=%s, err=%w", login, err)
+	}
+
+	return orders, nil
 }

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"gophermart/internal/orderscontroller"
@@ -140,8 +141,6 @@ func parseOrderID(data []byte) (string, error) {
 		return "", ErrBadRequestFormat
 	}
 
-	// TODO: add validation bu luna's algorithm https://ru.wikipedia.org/wiki/%D0%90%D0%BB%D0%B3%D0%BE%D1%80%D0%B8%D1%82%D0%BC_%D0%9B%D1%83%D0%BD%D0%B0
-
 	for _, c := range orderID {
 		if !unicode.IsDigit(c) {
 			return "", ErrBadOrderID
@@ -156,5 +155,33 @@ func parseOrderID(data []byte) (string, error) {
 }
 
 func (h *OrdersHandler) serveGetOrderList(w http.ResponseWriter, r *http.Request, login string) {
+	data, err := h.getUserOrders(r, login)
+	if err != nil {
+		zlog.Logger.Errorf("Get user=%s orders err=%s", login, err)
 
+		if errors.Is(err, orderscontroller.ErrOrdersListEmpty) {
+			w.WriteHeader(http.StatusNoContent)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
+}
+
+func (h *OrdersHandler) getUserOrders(r *http.Request, login string) ([]byte, error) {
+	orders, err := h.orderscontroller.GerOrders(r.Context(), login)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := json.Marshal(orders)
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
 }

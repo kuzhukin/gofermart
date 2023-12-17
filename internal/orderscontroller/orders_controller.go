@@ -16,6 +16,7 @@ const (
 )
 
 var ErrOrderRegistredByOtherUser = errors.New("order was registred by other user")
+var ErrOrdersListEmpty = errors.New("orders list empty")
 
 type OrdersController struct {
 	storage ordersstorage.Storage
@@ -37,4 +38,17 @@ func (c *OrdersController) AddOrder(ctx context.Context, login string, orderID s
 	}
 
 	return OrderCreatedStatus, nil
+}
+
+func (c *OrdersController) GerOrders(ctx context.Context, login string) ([]*sql.Order, error) {
+	orders, err := c.storage.GetAllOrders(ctx, login)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(orders) == 0 {
+		return nil, ErrOrdersListEmpty
+	}
+
+	return orders, nil
 }

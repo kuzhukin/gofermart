@@ -15,8 +15,13 @@ import (
 
 const (
 	createTablesTimeout = time.Second * 10
-	queryTimeout        = time.Second * 1
-	execTimeout         = time.Second * 1
+
+	createUserTimeout = time.Second * 1
+	getUserTimeout    = time.Second * 1
+
+	getOrderTimeout     = time.Second * 1
+	getAllOrdersTimeout = time.Second * 10
+	createOrderTimeout  = time.Second * 1
 )
 
 type Controller struct {
@@ -33,9 +38,11 @@ const (
 )
 
 type Order struct {
-	ID     string
-	User   string
-	Status OrderStatus
+	ID           string      `json:"id"`
+	User         string      `json:"user"`
+	Status       OrderStatus `json:"status"`
+	Accural      int64       `json:"accural,omitempty"`
+	UpdaloadTime string      `json:"uploaded_at"`
 }
 
 type User struct {
@@ -101,6 +108,9 @@ func (c *Controller) exec(query string) error {
 var ErrUserIsNotFound = errors.New("user isn't found")
 
 func (c *Controller) CreateUser(ctx context.Context, login string, token string) error {
+	ctx, cancel := context.WithTimeout(ctx, createUserTimeout)
+	defer cancel()
+
 	queryFunc := c.makeExecFunc(ctx, createUserQuery, []interface{}{login, token})
 
 	_, err := doQuery(queryFunc)
@@ -112,7 +122,10 @@ func (c *Controller) CreateUser(ctx context.Context, login string, token string)
 }
 
 func (c *Controller) FindUser(ctx context.Context, login string) (*User, error) {
-	queryFunc := c.makeQueryFunc(ctx, getUser, []interface{}{login})
+	ctx, cancel := context.WithTimeout(ctx, getUserTimeout)
+	defer cancel()
+
+	queryFunc := c.makeQueryFunc(ctx, getUser, []interface{}{login}, getUserTimeout)
 
 	rows, err := doQuery(queryFunc)
 	if err != nil {
@@ -143,7 +156,10 @@ func (c *Controller) FindUser(ctx context.Context, login string) (*User, error) 
 }
 
 func (c *Controller) FindUserByToken(ctx context.Context, token string) (*User, error) {
-	queryFunc := c.makeQueryFunc(ctx, getUserByToken, []interface{}{token})
+	ctx, cancel := context.WithTimeout(ctx, getUserTimeout)
+	defer cancel()
+
+	queryFunc := c.makeQueryFunc(ctx, getUserByToken, []interface{}{token}, getUserTimeout)
 
 	rows, err := doQuery(queryFunc)
 	if err != nil {
@@ -179,11 +195,16 @@ func (c *Controller) FindUserByToken(ctx context.Context, token string) (*User, 
 // ------------------------------------- Orders handling API -------------------------------------
 // -----------------------------------------------------------------------------------------------
 
+const DATE_TIME_FORMAT = "2006-01-02T15:04:05"
+
 var ErrOrderIsNotFound = errors.New("order isn't found")
 var ErrOrderAlreadyExist = errors.New("order already exist")
 
 func (c *Controller) FindOrder(ctx context.Context, login string, orderID string) (*Order, error) {
-	queryFunc := c.makeQueryFunc(ctx, getOrderQuery, []interface{}{orderID, login})
+	ctx, cancel := context.WithTimeout(ctx, getOrderTimeout)
+	defer cancel()
+
+	queryFunc := c.makeQueryFunc(ctx, getOrderQuery, []interface{}{orderID, login}, getOrderTimeout)
 
 	rows, err := doQuery(queryFunc)
 	if err != nil {
@@ -214,6 +235,9 @@ func (c *Controller) FindOrder(ctx context.Context, login string, orderID string
 }
 
 func (c *Controller) CreateOrder(ctx context.Context, login string, orderID string) error {
+	ctx, cancel := context.WithTimeout(ctx, createOrderTimeout)
+	defer cancel()
+
 	execFunc := c.makeExecFunc(ctx, createOrderQuery, []interface{}{orderID, login})
 
 	_, err := doQuery(execFunc)
@@ -228,15 +252,44 @@ func (c *Controller) CreateOrder(ctx context.Context, login string, orderID stri
 	return nil
 }
 
+func (c *Controller) GetAllOrders(ctx context.Context, login string) ([]*Order, error) {
+	ctx, cancel := context.WithTimeout(ctx, getAllOrdersTimeout)
+	defer cancel()
+
+	queryFunc := c.makeQueryFunc(ctx, getAllOrdersQuery, []interface{}{login}, getAllOrdersTimeout)
+
+	rows, err := doQuery(queryFunc)
+	if err != nil {
+		return nil, fmt.Errorf("get all orders query, err=%w", err)
+	}
+
+	orders := make([]*Order, 0)
+	for rows.Next() {
+		order := &Order{}
+		err := rows.Scan(&order.ID, &order.Status, &order.Accural, &order.User, &order.UpdaloadTime)
+		if err != nil {
+			return nil, fmt.Errorf("scan rows, err=%w", err)
+		}
+
+		// TODO: time formatting
+
+		orders = append(orders, order)
+	}
+	defer rows.Close()
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return orders, nil
+}
+
 // ----------------------------------------------------------------------------------------------
 // -------------------------------------- Internal Methods --------------------------------------
 // ----------------------------------------------------------------------------------------------
 
 func (c *Controller) makeExecFunc(ctx context.Context, query string, args []interface{}) func() (*sql.Result, error) {
 	return func() (r *sql.Result, err error) {
-		ctx, cancel := context.WithTimeout(ctx, execTimeout)
-		defer cancel()
-
 		res, err := c.db.ExecContext(ctx, query, args...)
 		if err != nil {
 			return nil, fmt.Errorf("exec query=%v with args=%v err=%w", query, args, err)
@@ -246,11 +299,8 @@ func (c *Controller) makeExecFunc(ctx context.Context, query string, args []inte
 	}
 }
 
-func (c *Controller) makeQueryFunc(ctx context.Context, query string, args []interface{}) func() (*sql.Rows, error) {
+func (c *Controller) makeQueryFunc(ctx context.Context, query string, args []interface{}, timeout time.Duration) func() (*sql.Rows, error) {
 	return func() (*sql.Rows, error) {
-		ctx, cancel := context.WithTimeout(ctx, queryTimeout)
-		defer cancel()
-
 		rows, err := c.db.QueryContext(ctx, query, args...)
 		if err != nil {
 			return nil, fmt.Errorf("query metric, err=%w", err)
