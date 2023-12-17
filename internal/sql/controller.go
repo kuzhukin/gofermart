@@ -221,7 +221,7 @@ func (c *Controller) FindOrder(ctx context.Context, orderID string) (*Order, err
 	order := &Order{}
 
 	if rows.Next() {
-		if err := rows.Scan(&order.ID, &order.Status, order.User); err != nil {
+		if err := rows.Scan(&order.ID, &order.Status, &order.Accrual, &order.User, &order.UpdaloadTime); err != nil {
 			return nil, fmt.Errorf("rows scan to order err=%w", err)
 		}
 
