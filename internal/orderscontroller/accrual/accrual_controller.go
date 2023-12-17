@@ -3,17 +3,14 @@ package accrual
 import (
 	"context"
 	"gophermart/internal/orderscontroller/accrual/client"
-	"gophermart/internal/storage/accrualstorage"
-	"gophermart/internal/storage/ordersstorage"
-	"gophermart/internal/storage/sql"
+	"gophermart/internal/sql"
 	"gophermart/internal/zlog"
 	"time"
 )
 
 type AccrualController struct {
-	client         *client.AccrualClient
-	accrualStorage accrualstorage.Storage
-	ordersStorage  ordersstorage.Storage
+	client        *client.AccrualClient
+	sqlController *sql.Controller
 
 	updaterCh chan []*sql.Order
 
@@ -22,14 +19,12 @@ type AccrualController struct {
 }
 
 func StartNewController(
-	ordersStorage ordersstorage.Storage,
-	accrualStorage accrualstorage.Storage,
+	sqlController *sql.Controller,
 	addr string,
 ) *AccrualController {
 	controller := &AccrualController{
-		client:         client.New(addr),
-		accrualStorage: accrualStorage,
-		ordersStorage:  ordersStorage,
+		client:        client.New(addr),
+		sqlController: sqlController,
 
 		updaterCh: make(chan []*sql.Order, 1),
 		done:      make(chan struct{}),
@@ -72,7 +67,7 @@ func (c *AccrualController) Stop() {
 func (c *AccrualController) checkAccrual() error {
 	ctx := context.Background()
 
-	orders, err := c.ordersStorage.GetUnexecutedOrders(ctx)
+	orders, err := c.sqlController.GetUnexecutedOrders(ctx)
 	if err != nil {
 		return err
 	}
@@ -105,7 +100,7 @@ func (c *AccrualController) startOrdersUpdater() {
 func (c *AccrualController) updateOrder(order *sql.Order) {
 	ctx := context.Background()
 
-	err := c.accrualStorage.UpdateAccrual(ctx, order)
+	err := c.sqlController.UpdateAccrual(ctx, order)
 	if err != nil {
 		zlog.Logger.Errorf("update accrual err=%s", err)
 	}

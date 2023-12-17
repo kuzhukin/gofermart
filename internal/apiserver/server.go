@@ -11,10 +11,7 @@ import (
 	"gophermart/internal/config"
 	"gophermart/internal/orderscontroller"
 	"gophermart/internal/orderscontroller/accrual"
-	"gophermart/internal/storage/accrualstorage"
-	"gophermart/internal/storage/ordersstorage"
-	"gophermart/internal/storage/sql"
-	"gophermart/internal/storage/userstorage"
+	"gophermart/internal/sql"
 	"gophermart/internal/zlog"
 	"net/http"
 	"time"
@@ -47,7 +44,7 @@ func StartNew() (*GophermartServer, error) {
 	}
 	server.start(config.RunAddress)
 
-	zlog.Logger.Info("Server started config=%v", config)
+	zlog.Logger.Infof("Server started config=%v", config)
 
 	return server, nil
 }
@@ -59,20 +56,16 @@ func newServer(config *config.Config) (*GophermartServer, error) {
 		return nil, fmt.Errorf("start new sql controller, err=%w", err)
 	}
 
-	userStorage := userstorage.New(sqlController)
-	orderStorage := ordersstorage.New(sqlController)
-	accrualStorage := accrualstorage.New(sqlController)
-
 	cryptographer, err := cryptographer.NewAesCryptographer()
 	if err != nil {
 		return nil, fmt.Errorf("new aes cryptographer, err=%w", err)
 	}
 
-	authService := authservice.NewAuthService(userStorage, cryptographer)
-	ordersCtrl := orderscontroller.NewOrdersController(orderStorage)
-	balancecCtrl := balancecontroller.New(userStorage)
+	authService := authservice.NewAuthService(sqlController, cryptographer)
+	ordersCtrl := orderscontroller.NewOrdersController(sqlController)
+	balancecCtrl := balancecontroller.New(sqlController)
 
-	accrualCtrl := accrual.StartNewController(orderStorage, accrualStorage, config.AccrualAddress)
+	accrualCtrl := accrual.StartNewController(sqlController, config.AccrualAddress)
 
 	server := &GophermartServer{
 		sqlCtrl:           sqlController,

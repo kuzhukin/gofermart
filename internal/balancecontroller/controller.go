@@ -3,16 +3,16 @@ package balancecontroller
 import (
 	"context"
 	"fmt"
-	"gophermart/internal/storage/userstorage"
+	"gophermart/internal/sql"
 )
 
 type Controller struct {
-	userStorage userstorage.Storage
+	sqlController *sql.Controller
 }
 
-func New(storage userstorage.Storage) *Controller {
+func New(sqlController *sql.Controller) *Controller {
 	return &Controller{
-		userStorage: storage,
+		sqlController: sqlController,
 	}
 }
 
@@ -22,7 +22,7 @@ type BalanceResponse struct {
 }
 
 func (c *Controller) GetBalnce(ctx context.Context, login string) (*BalanceResponse, error) {
-	user, err := c.userStorage.GetUser(ctx, login)
+	user, err := c.sqlController.FindUser(ctx, login)
 	if err != nil {
 		return nil, fmt.Errorf("get user=%s from storage err=%w", login, err)
 	}

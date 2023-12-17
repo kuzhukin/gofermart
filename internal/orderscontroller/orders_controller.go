@@ -3,8 +3,8 @@ package orderscontroller
 import (
 	"context"
 	"errors"
-	"gophermart/internal/storage/ordersstorage"
-	"gophermart/internal/storage/sql"
+	"fmt"
+	"gophermart/internal/sql"
 )
 
 type OrderStatus int
@@ -19,29 +19,42 @@ var ErrOrderRegistredByOtherUser = errors.New("order was registred by other user
 var ErrOrdersListEmpty = errors.New("orders list empty")
 
 type OrdersController struct {
-	storage ordersstorage.Storage
+	sqlController *sql.Controller
 }
 
-func NewOrdersController(storage ordersstorage.Storage) *OrdersController {
+func NewOrdersController(sqlController *sql.Controller) *OrdersController {
 	return &OrdersController{
-		storage: storage,
+		sqlController: sqlController,
 	}
 }
 
 func (c *OrdersController) AddOrder(ctx context.Context, login string, orderID string) (OrderStatus, error) {
-	if err := c.storage.SaveOrder(ctx, login, orderID); err != nil {
-		if errors.Is(err, sql.ErrOrderAlreadyExist) {
-			return OrderAlreadyExistsStatus, nil
+	order, err := c.sqlController.FindOrder(ctx, orderID)
+	if err != nil {
+		if !errors.Is(err, sql.ErrOrderIsNotFound) {
+			return OrderUnknownStatus, fmt.Errorf("find user=%s order=%s err=%w", login, orderID, err)
 		}
 
-		return OrderUnknownStatus, err
+		if err := c.sqlController.CreateOrder(ctx, login, orderID); err != nil {
+			if errors.Is(err, sql.ErrOrderAlreadyExist) {
+				return OrderAlreadyExistsStatus, nil
+			}
+
+			return OrderUnknownStatus, err
+		}
+
+		return OrderCreatedStatus, nil
 	}
 
-	return OrderCreatedStatus, nil
+	if order.User != login {
+		return OrderUnknownStatus, ErrOrderRegistredByOtherUser
+	}
+
+	return OrderAlreadyExistsStatus, nil
 }
 
 func (c *OrdersController) GerOrders(ctx context.Context, login string) ([]*sql.Order, error) {
-	orders, err := c.storage.GetUserOrders(ctx, login)
+	orders, err := c.sqlController.GetUserOrders(ctx, login)
 	if err != nil {
 		return nil, err
 	}

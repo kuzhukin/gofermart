@@ -32,7 +32,7 @@ const (
 
 	updateOrderAccrualQuery = `UPDATE orders SET status = $1, accrual = $2 WHERE id = $3;`
 
-	getOrderQuery = `SELECT * FROM orders WHERE "id" = $1 AND "user" = $2;`
+	getOrderQuery = `SELECT * FROM orders WHERE "id" = $1;`
 
 	getAllOrdersQuery        = `SELECT * FROM orders WHERE "user" = $1 ORDER BY upload_time;`
 	getUnexecutedOrdersQuery = `SELECT * FROM orders WHERE "status" IN ('NEW', 'PROCESSING');`

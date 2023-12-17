@@ -201,11 +201,11 @@ const TimestampFormat = "2006-01-02T15:04:05"
 var ErrOrderIsNotFound = errors.New("order isn't found")
 var ErrOrderAlreadyExist = errors.New("order already exist")
 
-func (c *Controller) FindOrder(ctx context.Context, login string, orderID string) (*Order, error) {
+func (c *Controller) FindOrder(ctx context.Context, orderID string) (*Order, error) {
 	ctx, cancel := context.WithTimeout(ctx, getOrderTimeout)
 	defer cancel()
 
-	queryFunc := c.makeQueryFunc(ctx, getOrderQuery, []interface{}{orderID, login}, getOrderTimeout)
+	queryFunc := c.makeQueryFunc(ctx, getOrderQuery, []interface{}{orderID}, getOrderTimeout)
 
 	rows, err := doQuery(queryFunc)
 	if err != nil {

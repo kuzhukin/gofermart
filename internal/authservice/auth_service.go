@@ -6,17 +6,20 @@ import (
 	"fmt"
 	"gophermart/internal/apiserver/handler"
 	"gophermart/internal/authservice/cryptographer"
-	"gophermart/internal/storage/userstorage"
+	"gophermart/internal/sql"
 )
 
+var ErrIsAlreadySaved = errors.New("is already saved")
+var ErrIsNotContains = sql.ErrUserIsNotFound
+
 type AuthService struct {
-	userStorage   userstorage.Storage
+	sqlCtrl       *sql.Controller
 	cryptographer cryptographer.Cryptographer
 }
 
-func NewAuthService(storage userstorage.Storage, cryptographer cryptographer.Cryptographer) *AuthService {
+func NewAuthService(sqlCtrl *sql.Controller, cryptographer cryptographer.Cryptographer) *AuthService {
 	return &AuthService{
-		userStorage:   storage,
+		sqlCtrl:       sqlCtrl,
 		cryptographer: cryptographer,
 	}
 }
@@ -27,8 +30,8 @@ func (s *AuthService) Register(ctx context.Context, login string, password strin
 		return "", err
 	}
 
-	if err := s.userStorage.SaveUser(ctx, login, key); err != nil {
-		if errors.Is(userstorage.ErrIsAlreadySaved, err) {
+	if err := s.saveUser(ctx, login, key); err != nil {
+		if errors.Is(err, ErrIsAlreadySaved) {
 			return "", fmt.Errorf("user with login=%s already registred, err=%w", login, handler.ErrIsAlreadyRegistred)
 		}
 
@@ -38,10 +41,23 @@ func (s *AuthService) Register(ctx context.Context, login string, password strin
 	return key, nil
 }
 
-func (s *AuthService) Authorize(ctx context.Context, login string, password string) (string, error) {
-	userInfo, err := s.userStorage.GetUser(ctx, login)
+func (s *AuthService) saveUser(ctx context.Context, login string, token string) error {
+	_, err := s.sqlCtrl.FindUser(ctx, login)
 	if err != nil {
-		if errors.Is(err, userstorage.ErrIsNotContains) {
+		if errors.Is(err, sql.ErrUserIsNotFound) {
+			return s.sqlCtrl.CreateUser(ctx, login, token)
+		}
+
+		return fmt.Errorf("find user=%s, err=%w", login, err)
+	}
+
+	return ErrIsAlreadySaved
+}
+
+func (s *AuthService) Authorize(ctx context.Context, login string, password string) (string, error) {
+	userInfo, err := s.sqlCtrl.FindUser(ctx, login)
+	if err != nil {
+		if errors.Is(err, ErrIsNotContains) {
 			return "", fmt.Errorf("wasn't registred, err=%w", handler.ErrIsNotAutorized)
 		}
 
@@ -61,9 +77,9 @@ func (s *AuthService) Authorize(ctx context.Context, login string, password stri
 }
 
 func (s *AuthService) Check(ctx context.Context, userKey string) (string, error) {
-	info, err := s.userStorage.GetUserByToken(ctx, userKey)
+	info, err := s.sqlCtrl.FindUserByToken(ctx, userKey)
 	if err != nil {
-		if errors.Is(err, userstorage.ErrIsNotContains) {
+		if errors.Is(err, ErrIsNotContains) {
 			return "", fmt.Errorf("wasn't registred, err=%w", handler.ErrIsNotAutorized)
 		}
 
