@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,10 +29,30 @@ func writeAuthCookie(w http.ResponseWriter, userKey string) {
 func readAuthCookie(r *http.Request) (string, error) {
 	authorizationCookie, err := r.Cookie("Authorization")
 	if err != nil {
-		return "", fmt.Errorf("get Authorization cookie")
+		return "", fmt.Errorf("get Authorization cookie, err=%w", err)
 	}
 
 	return authorizationCookie.Value, nil
+}
+
+var ErrUserIsNotAuthentificated = errors.New("useris not authentificated")
+
+func checkUserAuthorization(r *http.Request, checker AuthChecker) (string, error) {
+	userKey, err := readAuthCookie(r)
+	if err != nil {
+		if errors.Is(err, http.ErrNoCookie) {
+			return "", ErrUserIsNotAuthentificated
+		}
+
+		return "", fmt.Errorf("read auth cookie, err=%w", err)
+	}
+
+	login, err := checker.Check(r.Context(), userKey)
+	if err != nil {
+		return "", fmt.Errorf("check auth for cookie=%s, err=%w", userKey, err)
+	}
+
+	return login, nil
 }
 
 func validateOrderID(id string) bool {

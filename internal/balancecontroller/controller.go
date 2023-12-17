@@ -17,8 +17,8 @@ func New(storage userstorage.Storage) *Controller {
 }
 
 type BalanceResponse struct {
-	Current   float64 `json:"current"`
-	Withdrawn float64 `json:"withdrawn"`
+	Current   float32 `json:"current"`
+	Withdrawn float32 `json:"withdrawn"`
 }
 
 func (c *Controller) GetBalnce(ctx context.Context, login string) (*BalanceResponse, error) {
@@ -29,9 +29,9 @@ func (c *Controller) GetBalnce(ctx context.Context, login string) (*BalanceRespo
 
 	// TODO: add getting withdrawn
 
-	return &BalanceResponse{Current: float64(user.Balance)}, nil
+	return &BalanceResponse{Current: user.Balance}, nil
 }
 
-func (c *Controller) Withdraw(ctx context.Context, login string, orderID string, amount float64) error {
+func (c *Controller) Withdraw(ctx context.Context, login string, orderID string, amount float32) error {
 	return nil
 }

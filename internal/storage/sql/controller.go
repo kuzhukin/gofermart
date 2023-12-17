@@ -42,14 +42,14 @@ type Order struct {
 	ID           string      `json:"id"`
 	User         string      `json:"user"`
 	Status       OrderStatus `json:"status"`
-	Accrual      float64     `json:"accrual,omitempty"`
+	Accrual      float32     `json:"accrual,omitempty"`
 	UpdaloadTime string      `json:"uploaded_at"`
 }
 
 type User struct {
 	Login     string
 	AuthToken string
-	Balance   float64
+	Balance   float32
 }
 
 func StartNewController(dataSourceName string) (*Controller, error) {

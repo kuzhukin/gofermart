@@ -47,6 +47,8 @@ func StartNew() (*GophermartServer, error) {
 	}
 	server.start(config.RunAddress)
 
+	zlog.Logger.Info("Server started config=%v", config)
+
 	return server, nil
 }
 

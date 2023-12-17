@@ -12,7 +12,6 @@ import (
 	"unicode"
 )
 
-var ErrUserIsNotAuthentificated = errors.New("user is not authentificated")
 var ErrUnsuportedMethod = errors.New("unsuported method")
 
 type AuthChecker interface {
@@ -34,37 +33,26 @@ func NewOrdersHandler(authChecker AuthChecker, ordersController *orderscontrolle
 func (h *OrdersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	zlog.Logger.Debugf("Orders handler")
 
+	login, err := checkUserAuthorization(r, h.authChecker)
+	if err != nil {
+		zlog.Logger.Errorf("Check user auth err=%s", err)
+
+		if errors.Is(err, ErrUserIsNotAuthentificated) {
+			w.WriteHeader(http.StatusUnauthorized)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+
+		return
+	}
+
 	handler, err := h.selectHandler(r.Method)
 	if err != nil {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 
-	login, err := h.checkUserAuthorization(r)
-	if err != nil {
-		if errors.Is(err, ErrUserIsNotAuthentificated) {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-
-		w.WriteHeader(http.StatusInternalServerError)
-	}
-
 	handler(w, r, login)
-}
-
-func (h *OrdersHandler) checkUserAuthorization(r *http.Request) (string, error) {
-	userKey, err := readAuthCookie(r)
-	if err != nil {
-		return "", fmt.Errorf("read auth cookie, err=%w", err)
-	}
-
-	login, err := h.authChecker.Check(r.Context(), userKey)
-	if err != nil {
-		return "", fmt.Errorf("check auth for cookie=%s, err=%w", userKey, err)
-	}
-
-	return login, nil
 }
 
 func (h *OrdersHandler) selectHandler(method string) (func(w http.ResponseWriter, r *http.Request, login string), error) {

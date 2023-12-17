@@ -47,12 +47,7 @@ func (h *BalanceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BalanceHandler) handle(w http.ResponseWriter, r *http.Request) ([]byte, error) {
-	authKey, err := readAuthCookie(r)
-	if err != nil {
-		return nil, err
-	}
-
-	login, err := h.authChecker.Check(r.Context(), authKey)
+	login, err := checkUserAuthorization(r, h.authChecker)
 	if err != nil {
 		return nil, err
 	}
