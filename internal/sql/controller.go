@@ -38,7 +38,8 @@ type query struct {
 }
 
 type Controller struct {
-	db *sql.DB
+	db     *sql.DB
+	dbPath string
 }
 
 func StartNewController(dataSourceName string) (*Controller, error) {
@@ -47,7 +48,7 @@ func StartNewController(dataSourceName string) (*Controller, error) {
 		return nil, fmt.Errorf("sql open db=%s err=%w", dataSourceName, err)
 	}
 
-	ctrl := &Controller{db: db}
+	ctrl := &Controller{db: db, dbPath: dataSourceName}
 	if err := ctrl.init(); err != nil {
 		return nil, fmt.Errorf("init, err=%w", err)
 	}
@@ -98,8 +99,8 @@ func (c *Controller) exec(query string) error {
 var ErrUserIsNotFound = errors.New("user isn't found")
 
 func (c *Controller) CreateUser(ctx context.Context, login string, token string) error {
-	ctx, cancel := context.WithTimeout(ctx, createUserTimeout)
-	defer cancel()
+	// ctx, cancel := context.WithTimeout(ctx, createUserTimeout)
+	// defer cancel()
 
 	queryFunc := c.makeExecFunc(ctx, prepareCreateUserQuery(login, token))
 
@@ -118,9 +119,14 @@ func (c *Controller) FindUser(ctx context.Context, login string) (*User, error) 
 	if err != nil {
 		return nil, fmt.Errorf("do find user query err=%w", err)
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			zlog.Logger.Errorf("rows close err=%s", err)
+		}
+	}()
 
 	user := &User{}
-
 	if rows.Next() {
 		if err := rows.Scan(&user.Login, &user.AuthToken, &user.Balance); err != nil {
 			return nil, fmt.Errorf("rows scan to user, err=%w", err)
@@ -128,12 +134,6 @@ func (c *Controller) FindUser(ctx context.Context, login string) (*User, error) 
 
 		return user, nil
 	}
-	defer func() {
-		err := rows.Close()
-		if err != nil {
-			zlog.Logger.Errorf("rows close err=%s", err)
-		}
-	}()
 
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -149,16 +149,6 @@ func (c *Controller) FindUserByToken(ctx context.Context, token string) (*User, 
 	if err != nil {
 		return nil, fmt.Errorf("do find user by token query err=%w", err)
 	}
-
-	user := &User{}
-
-	if rows.Next() {
-		if err := rows.Scan(&user.Login, &user.AuthToken, &user.Balance); err != nil {
-			return nil, fmt.Errorf("rows scan to user, err=%w", err)
-		}
-
-		return user, nil
-	}
 	defer func() {
 		err := rows.Close()
 		if err != nil {
@@ -166,11 +156,21 @@ func (c *Controller) FindUserByToken(ctx context.Context, token string) (*User, 
 		}
 	}()
 
+	user := &User{}
+	if !rows.Next() {
+		return nil, ErrUserIsNotFound
+	}
+
+	if err := rows.Scan(&user.Login, &user.AuthToken, &user.Balance); err != nil {
+		return nil, fmt.Errorf("rows scan to user, err=%w", err)
+	}
+
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
-	return nil, ErrUserIsNotFound
+	return user, nil
+
 }
 
 var ErrNotEnoughFundsInTheAccount = errors.New("there are not enough funds in the account")
@@ -196,23 +196,37 @@ func (c *Controller) Withdraw(ctx context.Context, login string, orderID string,
 		if err != nil {
 			return err
 		}
+		defer getUserStmt.Close()
 
 		decreaseBalanceStmt, err := tx.PrepareContext(ctx, decreaseUserBalanceQury.request)
 		if err != nil {
 			return err
 		}
+		defer decreaseBalanceStmt.Close()
 
 		addWithdrawalsStmt, err := tx.PrepareContext(ctx, addWitdhrawalsQuery.request)
 		if err != nil {
 			return err
 		}
+		defer addWithdrawalsStmt.Close()
 
 		rows, err := getUserStmt.QueryContext(ctx, getUserQuery.args...)
 		if err != nil {
 			return err
 		}
+		defer func() {
+			err := rows.Close()
+			if err != nil {
+				zlog.Logger.Errorf("rows close err=%s", err)
+			}
+		}()
 
-		user, err := ScanNewUser(rows)
+		if !rows.Next() {
+			return ErrEmptyScannerResult
+		}
+
+		user := &User{}
+		err = user.Scan(rows)
 		if err != nil {
 			return fmt.Errorf("scan new user, err=%w", err)
 		}
@@ -238,7 +252,7 @@ func (c *Controller) Withdraw(ctx context.Context, login string, orderID string,
 		return tx.Commit()
 	}
 
-	return doTx(query)
+	return c.doTx(query)
 }
 
 type UserStatistic struct {
@@ -252,8 +266,18 @@ func (c *Controller) GetUserStatistic(ctx context.Context, login string) (*UserS
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		err := userRows.Close()
+		if err != nil {
+			zlog.Logger.Errorf("rows close err=%s", err)
+		}
+	}()
+	if !userRows.Next() {
+		return nil, ErrEmptyScannerResult
+	}
 
-	user, err := ScanNewUser(userRows)
+	user := &User{}
+	err = user.Scan(userRows)
 	if err != nil {
 		return nil, fmt.Errorf("scan new user, err=%w", err)
 	}
@@ -267,6 +291,12 @@ func (c *Controller) GetUserStatistic(ctx context.Context, login string) (*UserS
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		err := withdrawalsRows.Close()
+		if err != nil {
+			zlog.Logger.Errorf("rows close err=%s", err)
+		}
+	}()
 
 	if !withdrawalsRows.Next() {
 		return nil, ErrEmptyScannerResult
@@ -363,6 +393,12 @@ func (c *Controller) GetUserWithdrawals(ctx context.Context, user string) ([]*Us
 	if err != nil {
 		return nil, fmt.Errorf("do get all withdrawals of user=%s query err=%w", user, err)
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			zlog.Logger.Errorf("rows close err=%s", err)
+		}
+	}()
 
 	list := make([]*UserWithdrawRecord, 0)
 	for rows.Next() {
@@ -406,24 +442,23 @@ func (c *Controller) FindOrder(ctx context.Context, orderID string) (*Order, err
 
 	order := &Order{}
 
-	if rows.Next() {
-		if err := rows.Scan(&order.ID, &order.Status, &order.Accrual, &order.User, &order.UpdaloadTime); err != nil {
-			return nil, fmt.Errorf("rows scan to order err=%w", err)
-		}
-
-		return order, nil
+	if !rows.Next() {
+		return nil, ErrOrderIsNotFound
+	}
+	if err := rows.Scan(&order.ID, &order.Status, &order.Accrual, &order.User, &order.UpdaloadTime); err != nil {
+		return nil, fmt.Errorf("rows scan to order err=%w", err)
 	}
 
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
-	return nil, ErrOrderIsNotFound
+	return order, nil
 }
 
 func (c *Controller) CreateOrder(ctx context.Context, login string, orderID string) error {
-	ctx, cancel := context.WithTimeout(ctx, createOrderTimeout)
-	defer cancel()
+	// ctx, cancel := context.WithTimeout(ctx, createOrderTimeout)
+	// defer cancel()
 
 	execFunc := c.makeExecFunc(ctx, prepareCreateOrderQuery(orderID, login))
 
@@ -446,6 +481,12 @@ func (c *Controller) GetUserOrders(ctx context.Context, login string) ([]*Order,
 	if err != nil {
 		return nil, fmt.Errorf("get all orders query, err=%w", err)
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			zlog.Logger.Errorf("rows close err=%s", err)
+		}
+	}()
 
 	orders := make([]*Order, 0)
 	for rows.Next() {
@@ -457,7 +498,6 @@ func (c *Controller) GetUserOrders(ctx context.Context, login string) ([]*Order,
 
 		orders = append(orders, order)
 	}
-	defer rows.Close()
 
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -473,6 +513,12 @@ func (c *Controller) GetUnexecutedOrders(ctx context.Context) ([]*Order, error) 
 	if err != nil {
 		return nil, fmt.Errorf("get unexecuted orders query, err=%w", err)
 	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			zlog.Logger.Errorf("rows close err=%s", err)
+		}
+	}()
 
 	orders := make([]*Order, 0)
 	for rows.Next() {
@@ -484,7 +530,6 @@ func (c *Controller) GetUnexecutedOrders(ctx context.Context) ([]*Order, error) 
 
 		orders = append(orders, order)
 	}
-	defer rows.Close()
 
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -494,8 +539,8 @@ func (c *Controller) GetUnexecutedOrders(ctx context.Context) ([]*Order, error) 
 }
 
 func (c *Controller) UpdateAccrual(ctx context.Context, order *Order) error {
-	ctx, cancel := context.WithTimeout(ctx, updateOrderAccrualTimeout)
-	defer cancel()
+	// ctx, cancel := context.WithTimeout(ctx, updateOrderAccrualTimeout)
+	// defer cancel()
 
 	tx, err := c.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -509,11 +554,13 @@ func (c *Controller) UpdateAccrual(ctx context.Context, order *Order) error {
 	if err != nil {
 		return nil
 	}
+	defer updateOrderStmt.Close()
 
 	updateBalanceStmt, err := tx.PrepareContext(ctx, increaseUserBalanceQuery)
 	if err != nil {
 		return nil
 	}
+	defer updateBalanceStmt.Close()
 
 	if _, err := updateOrderStmt.ExecContext(ctx, order.Status, order.Accrual, order.ID); err != nil {
 		return err
@@ -584,7 +631,7 @@ func doQuery[T any](queryFunc func() (*T, error)) (*T, error) {
 	return nil, commonErr
 }
 
-func doTx(queryFunc func() error) error {
+func (c *Controller) doTx(queryFunc func() error) error {
 	var commonErr error
 
 	trying := 3

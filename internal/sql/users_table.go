@@ -2,7 +2,6 @@ package sql
 
 import (
 	"errors"
-	"fmt"
 )
 
 const (
@@ -33,24 +32,6 @@ func (u *User) Scan(scanner objectScanner) error {
 }
 
 var ErrEmptyScannerResult = errors.New("sql obj scanner has empty result")
-
-func ScanNewUser(scanner objectScanner) (*User, error) {
-	if !scanner.Next() {
-		if err := scanner.Err(); err != nil {
-			return nil, err
-		}
-
-		return nil, ErrEmptyScannerResult
-	}
-
-	u := &User{}
-	err := u.Scan(scanner)
-	if err != nil {
-		return nil, fmt.Errorf("user scan err=%w", err)
-	}
-
-	return u, nil
-}
 
 func prepareCreateUserQuery(login, token string) *query {
 	return &query{
