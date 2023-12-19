@@ -7,7 +7,6 @@ import (
 	"gophermart/internal/apiserver/middleware"
 	"gophermart/internal/authservice"
 	"gophermart/internal/authservice/cryptographer"
-	"gophermart/internal/balancecontroller"
 	"gophermart/internal/config"
 	"gophermart/internal/orderscontroller"
 	"gophermart/internal/orderscontroller/accrual"
@@ -27,7 +26,6 @@ type GophermartServer struct {
 
 	authService *authservice.AuthService
 	ordersCtrl  *orderscontroller.OrdersController
-	balanceCtrl *balancecontroller.Controller
 
 	waitingShutdownCh chan struct{}
 }
@@ -63,7 +61,6 @@ func newServer(config *config.Config) (*GophermartServer, error) {
 
 	authService := authservice.NewAuthService(sqlController, cryptographer)
 	ordersCtrl := orderscontroller.NewOrdersController(sqlController)
-	balancecCtrl := balancecontroller.New(sqlController)
 
 	accrualCtrl := accrual.StartNewController(sqlController, config.AccrualAddress)
 
@@ -72,7 +69,6 @@ func newServer(config *config.Config) (*GophermartServer, error) {
 		accrualCtrl:       accrualCtrl,
 		authService:       authService,
 		ordersCtrl:        ordersCtrl,
-		balanceCtrl:       balancecCtrl,
 		waitingShutdownCh: make(chan struct{}),
 	}
 
@@ -89,10 +85,11 @@ func (s *GophermartServer) initHTTPServer(addr string) {
 
 	router.Handle(registerEndpoint, handler.NewRegistrationHandler(s.authService))
 	router.Handle(loginEndpoint, handler.NewAutentifiactionHandler(s.authService))
+
 	router.Handle(ordersEndpoint, handler.NewOrdersHandler(s.authService, s.ordersCtrl))
-	router.Handle(balanceEndpoint, handler.NewBalanceHandler(s.authService, s.balanceCtrl))
-	router.Handle(balanceWithdrawEndpoint, handler.NewBalanceWithdrawHandler())
-	router.Handle(allWithdrawalsEndpoint, handler.NewWithdrawalsHandler(s.authService, s.balanceCtrl))
+	router.Handle(balanceEndpoint, handler.NewBalanceHandler(s.authService, s.sqlCtrl))
+	router.Handle(balanceWithdrawEndpoint, handler.NewBalanceWithdrawHandler(s.authService, s.sqlCtrl))
+	router.Handle(allWithdrawalsEndpoint, handler.NewWithdrawalsHandler(s.authService, s.sqlCtrl))
 
 	s.srvr = http.Server{Addr: addr, Handler: router}
 }

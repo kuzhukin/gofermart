@@ -18,6 +18,7 @@ const (
 
 	createUserTimeout = time.Second * 1
 	getUserTimeout    = time.Second * 1
+	withdrawTimeout   = time.Second * 3
 
 	getOrderTimeout           = time.Second * 1
 	getAllOrdersTimeout       = time.Second * 10
@@ -25,31 +26,19 @@ const (
 	updateOrderAccrualTimeout = time.Second * 2
 )
 
+type objectScanner interface {
+	Next() bool
+	Scan(dest ...any) error
+	Err() error
+}
+
+type query struct {
+	request string
+	args    []interface{}
+}
+
 type Controller struct {
 	db *sql.DB
-}
-
-type OrderStatus string
-
-const (
-	OrderStatusNew        OrderStatus = "NEW"
-	OrderStatusProcessing OrderStatus = "PROCESSING"
-	OrderStatusInvalid    OrderStatus = "INVALID"
-	OrderStatusProcessed  OrderStatus = "PROCESSED"
-)
-
-type Order struct {
-	ID           string      `json:"id"`
-	User         string      `json:"user"`
-	Status       OrderStatus `json:"status"`
-	Accrual      float32     `json:"accrual,omitempty"`
-	UpdaloadTime string      `json:"uploaded_at"`
-}
-
-type User struct {
-	Login     string
-	AuthToken string
-	Balance   float32
 }
 
 func StartNewController(dataSourceName string) (*Controller, error) {
@@ -112,7 +101,7 @@ func (c *Controller) CreateUser(ctx context.Context, login string, token string)
 	ctx, cancel := context.WithTimeout(ctx, createUserTimeout)
 	defer cancel()
 
-	queryFunc := c.makeExecFunc(ctx, createUserQuery, []interface{}{login, token})
+	queryFunc := c.makeExecFunc(ctx, prepareCreateUserQuery(login, token))
 
 	_, err := doQuery(queryFunc)
 	if err != nil {
@@ -123,10 +112,7 @@ func (c *Controller) CreateUser(ctx context.Context, login string, token string)
 }
 
 func (c *Controller) FindUser(ctx context.Context, login string) (*User, error) {
-	ctx, cancel := context.WithTimeout(ctx, getUserTimeout)
-	defer cancel()
-
-	queryFunc := c.makeQueryFunc(ctx, getUser, []interface{}{login}, getUserTimeout)
+	queryFunc := c.makeQueryFunc(ctx, prepareGetUserQuery(login), getUserTimeout)
 
 	rows, err := doQuery(queryFunc)
 	if err != nil {
@@ -157,10 +143,7 @@ func (c *Controller) FindUser(ctx context.Context, login string) (*User, error) 
 }
 
 func (c *Controller) FindUserByToken(ctx context.Context, token string) (*User, error) {
-	ctx, cancel := context.WithTimeout(ctx, getUserTimeout)
-	defer cancel()
-
-	queryFunc := c.makeQueryFunc(ctx, getUserByToken, []interface{}{token}, getUserTimeout)
+	queryFunc := c.makeQueryFunc(ctx, prepareGetUserByTokenQuery(token), getUserTimeout)
 
 	rows, err := doQuery(queryFunc)
 	if err != nil {
@@ -190,7 +173,130 @@ func (c *Controller) FindUserByToken(ctx context.Context, token string) (*User, 
 	return nil, ErrUserIsNotFound
 }
 
-// func (c *Controller) Withdraw(ctx cont)
+var ErrNotEnoughFundsInTheAccount = errors.New("there are not enough funds in the account")
+
+func (c *Controller) Withdraw(ctx context.Context, login string, orderID string, amount float64) error {
+	ctx, cancel := context.WithTimeout(ctx, withdrawTimeout)
+	defer cancel()
+
+	tx, err := c.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx err=%w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	userRows, err := doTransactionQuery(ctx, tx, prepareGetUserQuery(login))
+	if err != nil {
+		return err
+	}
+
+	user, err := ScanNewUser(userRows)
+	if err != nil {
+		return fmt.Errorf("scan new user, err=%w", err)
+	}
+
+	if err := userRows.Err(); err != nil {
+		return err
+	}
+
+	if user.Balance < amount {
+		return ErrNotEnoughFundsInTheAccount
+	}
+
+	_, err = doTransactionExec(ctx, tx, prepareDecreaseUserBalanceQuery(login, amount))
+	if err != nil {
+		return fmt.Errorf("decrese user=%s balance=%.4f on amount=%.4f err=%w", user.Login, user.Balance, amount, err)
+	}
+
+	_, err = doTransactionExec(ctx, tx, prepareAddWithdrawalsQuery(orderID, login, amount))
+	if err != nil {
+		return fmt.Errorf("add withdrawals query orderID=%s login=%s amount=%.4f err=%w", orderID, login, amount, err)
+	}
+
+	return tx.Commit()
+}
+
+type UserStatistic struct {
+	Balance             float64
+	WithdrawalsTotalSum float64
+}
+
+func (c *Controller) GetUserStatistic(ctx context.Context, login string) (*UserStatistic, error) {
+	ctx, cancel := context.WithTimeout(ctx, withdrawTimeout)
+	defer cancel()
+
+	tx, err := c.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx err=%w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	userRows, err := doTransactionQuery(ctx, tx, prepareGetUserQuery(login))
+	if err != nil {
+		return nil, fmt.Errorf("do tx get user, err=%w", err)
+	}
+
+	user, err := ScanNewUser(userRows)
+	if err != nil {
+		return nil, fmt.Errorf("scan user err=%w", err)
+	}
+
+	if err := userRows.Err(); err != nil {
+		return nil, err
+	}
+
+	withdrawRows, err := doTransactionQuery(ctx, tx, prepareWithdrawalsSumQuery(login))
+	if err != nil {
+		return nil, fmt.Errorf("do tx withdrawals sum by user=%s, err=%w", login, err)
+	}
+
+	if !withdrawRows.Next() {
+		return nil, ErrEmptyScannerResult
+	}
+
+	withdrawsSum := float64(0.0)
+	if err := withdrawRows.Scan(&withdrawsSum); err != nil {
+		return nil, fmt.Errorf("scan withdraws sum err=%w", err)
+	}
+
+	if err := withdrawRows.Err(); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		zlog.Logger.Errorf("commit tx err=%s", err)
+	}
+
+	return &UserStatistic{Balance: user.Balance, WithdrawalsTotalSum: withdrawsSum}, nil
+}
+
+func (c *Controller) GetUserWithdrawals(ctx context.Context, user string) ([]*UserWithdrawRecord, error) {
+	queryFunc := c.makeQueryFunc(ctx, prepareGetAllUserWithdrawals(user), time.Second*5)
+	rows, err := doQuery(queryFunc)
+	if err != nil {
+		return nil, fmt.Errorf("do get all withdrawals of user=%s query err=%w", user, err)
+	}
+
+	list := make([]*UserWithdrawRecord, 0)
+	for rows.Next() {
+		wr, err := ScanNewWithdrawRecord(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan withdraw err=%w", err)
+		}
+
+		list = append(list, wr)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows err=%w", err)
+	}
+
+	return list, nil
+}
 
 // -----------------------------------------------------------------------------------------------
 // ------------------------------------- Orders handling API -------------------------------------
@@ -202,10 +308,7 @@ var ErrOrderIsNotFound = errors.New("order isn't found")
 var ErrOrderAlreadyExist = errors.New("order already exist")
 
 func (c *Controller) FindOrder(ctx context.Context, orderID string) (*Order, error) {
-	ctx, cancel := context.WithTimeout(ctx, getOrderTimeout)
-	defer cancel()
-
-	queryFunc := c.makeQueryFunc(ctx, getOrderQuery, []interface{}{orderID}, getOrderTimeout)
+	queryFunc := c.makeQueryFunc(ctx, prepareGetOrderQuery(orderID), getOrderTimeout)
 
 	rows, err := doQuery(queryFunc)
 	if err != nil {
@@ -239,9 +342,7 @@ func (c *Controller) CreateOrder(ctx context.Context, login string, orderID stri
 	ctx, cancel := context.WithTimeout(ctx, createOrderTimeout)
 	defer cancel()
 
-	uploadAt := time.Now().Format(time.RFC3339)
-
-	execFunc := c.makeExecFunc(ctx, createOrderQuery, []interface{}{orderID, login, uploadAt})
+	execFunc := c.makeExecFunc(ctx, prepareCreateOrderQuery(orderID, login))
 
 	_, err := doQuery(execFunc)
 	if err != nil {
@@ -256,10 +357,7 @@ func (c *Controller) CreateOrder(ctx context.Context, login string, orderID stri
 }
 
 func (c *Controller) GetUserOrders(ctx context.Context, login string) ([]*Order, error) {
-	ctx, cancel := context.WithTimeout(ctx, getAllOrdersTimeout)
-	defer cancel()
-
-	queryFunc := c.makeQueryFunc(ctx, getAllOrdersQuery, []interface{}{login}, getAllOrdersTimeout)
+	queryFunc := c.makeQueryFunc(ctx, prepareGetAllOrdersQuery(login), getAllOrdersTimeout)
 
 	rows, err := doQuery(queryFunc)
 	if err != nil {
@@ -286,10 +384,7 @@ func (c *Controller) GetUserOrders(ctx context.Context, login string) ([]*Order,
 }
 
 func (c *Controller) GetUnexecutedOrders(ctx context.Context) ([]*Order, error) {
-	ctx, cancel := context.WithTimeout(ctx, getAllOrdersTimeout)
-	defer cancel()
-
-	queryFunc := c.makeQueryFunc(ctx, getUnexecutedOrdersQuery, []interface{}{}, getAllOrdersTimeout)
+	queryFunc := c.makeQueryFunc(ctx, prepareGetUnexecutedOrdersQuery(), getAllOrdersTimeout)
 
 	rows, err := doQuery(queryFunc)
 	if err != nil {
@@ -319,7 +414,7 @@ func (c *Controller) UpdateAccrual(ctx context.Context, order *Order) error {
 	ctx, cancel := context.WithTimeout(ctx, updateOrderAccrualTimeout)
 	defer cancel()
 
-	tx, err := c.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSnapshot})
+	tx, err := c.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx err=%w", err)
 	}
@@ -352,20 +447,23 @@ func (c *Controller) UpdateAccrual(ctx context.Context, order *Order) error {
 // -------------------------------------- Internal Methods --------------------------------------
 // ----------------------------------------------------------------------------------------------
 
-func (c *Controller) makeExecFunc(ctx context.Context, query string, args []interface{}) func() (*sql.Result, error) {
+func (c *Controller) makeExecFunc(ctx context.Context, query *query) func() (*sql.Result, error) {
 	return func() (r *sql.Result, err error) {
-		res, err := c.db.ExecContext(ctx, query, args...)
+		res, err := c.db.ExecContext(ctx, query.request, query.args...)
 		if err != nil {
-			return nil, fmt.Errorf("exec query=%v with args=%v err=%w", query, args, err)
+			return nil, fmt.Errorf("exec query=%v err=%w", query, err)
 		}
 
 		return &res, nil
 	}
 }
 
-func (c *Controller) makeQueryFunc(ctx context.Context, query string, args []interface{}, timeout time.Duration) func() (*sql.Rows, error) {
+func (c *Controller) makeQueryFunc(ctx context.Context, query *query, timeout time.Duration) func() (*sql.Rows, error) {
 	return func() (*sql.Rows, error) {
-		rows, err := c.db.QueryContext(ctx, query, args...)
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+
+		rows, err := c.db.QueryContext(ctx, query.request, query.args...)
 		if err != nil {
 			return nil, fmt.Errorf("query metric, err=%w", err)
 		}
@@ -413,4 +511,54 @@ func IsNotUniqueError(err error) bool {
 	var pgErr *pgconn.PgError
 
 	return errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation
+}
+
+func doTransactionQuery(ctx context.Context, tx *sql.Tx, query *query) (*sql.Rows, error) {
+	trying := 3
+	var totalErr error
+	for trying > 0 {
+		trying--
+		stmt, err := tx.PrepareContext(ctx, query.request)
+		if err != nil {
+			totalErr = errors.Join(totalErr, err)
+			time.Sleep(time.Millisecond * 100)
+			continue
+		}
+
+		rows, err := stmt.QueryContext(ctx, query.args...)
+		if err != nil {
+			totalErr = errors.Join(totalErr, err)
+			time.Sleep(time.Millisecond * 100)
+			continue
+		}
+
+		return rows, nil
+	}
+
+	return nil, totalErr
+}
+
+func doTransactionExec(ctx context.Context, tx *sql.Tx, query *query) (sql.Result, error) {
+	trying := 3
+	var totalErr error
+	for trying > 0 {
+		trying--
+		stmt, err := tx.PrepareContext(ctx, query.request)
+		if err != nil {
+			totalErr = errors.Join(totalErr, err)
+			time.Sleep(time.Millisecond * 100)
+			continue
+		}
+
+		res, err := stmt.ExecContext(ctx, query.args...)
+		if err != nil {
+			totalErr = errors.Join(totalErr, err)
+			time.Sleep(time.Millisecond * 100)
+			continue
+		}
+
+		return res, nil
+	}
+
+	return nil, totalErr
 }

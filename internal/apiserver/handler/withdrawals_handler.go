@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"gophermart/internal/balancecontroller"
+	"gophermart/internal/sql"
 	"gophermart/internal/zlog"
 	"io"
 	"net/http"
@@ -12,18 +12,18 @@ import (
 
 type WithdrawalsHandler struct {
 	authChecker AuthChecker
-	balanceCtrl *balancecontroller.Controller
+	sqlCtrl     *sql.Controller
 }
 
 type WithdrawRequest struct {
 	OrderID string  `json:"order"`
-	Sum     float32 `json:"sum"`
+	Sum     float64 `json:"sum"`
 }
 
-func NewWithdrawalsHandler(authChecker AuthChecker, balanceCtrl *balancecontroller.Controller) *WithdrawalsHandler {
+func NewWithdrawalsHandler(authChecker AuthChecker, sqlCtrl *sql.Controller) *WithdrawalsHandler {
 	return &WithdrawalsHandler{
 		authChecker: authChecker,
-		balanceCtrl: balanceCtrl,
+		sqlCtrl:     sqlCtrl,
 	}
 }
 
@@ -43,7 +43,7 @@ func (h *WithdrawalsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusUnauthorized)
 		} else if errors.Is(err, ErrBadOrderID) {
 			w.WriteHeader(http.StatusUnprocessableEntity)
-		} else if errors.Is(err, balancecontroller.ErrNotEnoughFundsInTheAccount) {
+		} else if errors.Is(err, sql.ErrNotEnoughFundsInTheAccount) {
 			w.WriteHeader(http.StatusPaymentRequired)
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -75,7 +75,7 @@ func (h *WithdrawalsHandler) handle(r *http.Request) error {
 		return ErrBadOrderID
 	}
 
-	if err := h.balanceCtrl.Withdraw(r.Context(), login, req.OrderID, req.Sum); err != nil {
+	if err := h.sqlCtrl.Withdraw(r.Context(), login, req.OrderID, req.Sum); err != nil {
 		return fmt.Errorf("withdraw req=%v, err=%w", req, err)
 	}
 

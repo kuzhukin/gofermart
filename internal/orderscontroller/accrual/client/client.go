@@ -21,7 +21,7 @@ type AccrualClient struct {
 func New(addr string) *AccrualClient {
 	return &AccrualClient{
 		cl:  *http.DefaultClient,
-		url: "http://" + addr + accrualEndpoint,
+		url: addr + accrualEndpoint,
 	}
 }
 
@@ -64,9 +64,9 @@ func (c *AccrualClient) UpdateOrderStatus(ctx context.Context, orderID string) (
 }
 
 var tryingIntervals []time.Duration = []time.Duration{
-	time.Millisecond * 1000,
-	time.Millisecond * 3000,
-	time.Millisecond * 5000,
+	time.Millisecond * 100,
+	time.Millisecond * 200,
+	time.Millisecond * 300,
 }
 
 func (c *AccrualClient) doRequest(req *http.Request) (*http.Response, error) {

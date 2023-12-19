@@ -8,6 +8,9 @@ import (
 	"time"
 )
 
+const pollingInterval = time.Second * 1
+const shutdownTimeout = time.Second * 10
+
 type AccrualController struct {
 	client        *client.AccrualClient
 	sqlController *sql.Controller
@@ -32,11 +35,13 @@ func StartNewController(
 	}
 
 	go func() {
-		checkAccrualTicker := time.NewTicker(time.Second * 5)
+		checkAccrualTicker := time.NewTicker(pollingInterval)
 
 		for {
 			select {
 			case <-checkAccrualTicker.C:
+				zlog.Logger.Debugf("Start check accrual")
+
 				if err := controller.checkAccrual(); err != nil {
 					zlog.Logger.Errorf("check accrual err=%s", err)
 				}
@@ -59,7 +64,7 @@ func (c *AccrualController) Stop() {
 	select {
 	case <-c.wait:
 		return
-	case <-time.After(time.Second * 10):
+	case <-time.After(shutdownTimeout):
 		return
 	}
 }
@@ -72,7 +77,12 @@ func (c *AccrualController) checkAccrual() error {
 		return err
 	}
 
+	zlog.Logger.Debugf("accrual controller has %d unexecuted orders", len(orders))
+
 	updatedOrders := c.checkOrdersStatus(ctx, orders)
+
+	zlog.Logger.Debugf("accrual controller has %d updated orders", len(updatedOrders))
+
 	c.handleUpdatedOrders(updatedOrders)
 
 	return nil
@@ -87,8 +97,11 @@ func (c *AccrualController) startOrdersUpdater() {
 		for {
 			select {
 			case orders := <-c.updaterCh:
+				zlog.Logger.Debugf("START UPDATE ORDERS count=%d", len(orders))
 				for _, order := range orders {
+					zlog.Logger.Debugf("UPDATE ORDERS %+v", order)
 					c.updateOrder(order)
+					time.Sleep(time.Millisecond * 100)
 				}
 			case <-c.done:
 				return
@@ -99,6 +112,8 @@ func (c *AccrualController) startOrdersUpdater() {
 
 func (c *AccrualController) updateOrder(order *sql.Order) {
 	ctx := context.Background()
+
+	zlog.Logger.Debugf("write new order state to db order=%+v", order)
 
 	err := c.sqlController.UpdateAccrual(ctx, order)
 	if err != nil {

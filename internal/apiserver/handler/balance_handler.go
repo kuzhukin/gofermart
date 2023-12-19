@@ -4,20 +4,25 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"gophermart/internal/balancecontroller"
+	"gophermart/internal/sql"
 	"gophermart/internal/zlog"
 	"net/http"
 )
 
 type BalanceHandler struct {
-	authChecker AuthChecker
-	balanceCtrl *balancecontroller.Controller
+	authChecker   AuthChecker
+	sqlController *sql.Controller
 }
 
-func NewBalanceHandler(authChecker AuthChecker, ctrl *balancecontroller.Controller) *BalanceHandler {
+type BalanceResponse struct {
+	Current   float64 `json:"current"`
+	Withdrawn float64 `json:"withdrawn"`
+}
+
+func NewBalanceHandler(authChecker AuthChecker, ctrl *sql.Controller) *BalanceHandler {
 	return &BalanceHandler{
-		authChecker: authChecker,
-		balanceCtrl: ctrl,
+		authChecker:   authChecker,
+		sqlController: ctrl,
 	}
 }
 
@@ -36,6 +41,8 @@ func (h *BalanceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
+
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -52,14 +59,16 @@ func (h *BalanceHandler) handle(r *http.Request) ([]byte, error) {
 		return nil, err
 	}
 
-	balance, err := h.balanceCtrl.GetBalnce(r.Context(), login)
+	userStatistic, err := h.sqlController.GetUserStatistic(r.Context(), login)
 	if err != nil {
 		return nil, err
 	}
 
-	data, err := json.Marshal(balance)
+	response := &BalanceResponse{Current: userStatistic.Balance, Withdrawn: userStatistic.WithdrawalsTotalSum}
+
+	data, err := json.Marshal(response)
 	if err != nil {
-		return nil, fmt.Errorf("marshal balance=%v of user=%s, err=%w", balance, login, err)
+		return nil, fmt.Errorf("marshal balance=%v of user=%s, err=%w", response, login, err)
 	}
 
 	return data, nil
