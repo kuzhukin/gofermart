@@ -176,46 +176,69 @@ func (c *Controller) FindUserByToken(ctx context.Context, token string) (*User, 
 var ErrNotEnoughFundsInTheAccount = errors.New("there are not enough funds in the account")
 
 func (c *Controller) Withdraw(ctx context.Context, login string, orderID string, amount float64) error {
-	ctx, cancel := context.WithTimeout(ctx, withdrawTimeout)
-	defer cancel()
+	query := func() error {
+		ctx, cancel := context.WithTimeout(ctx, withdrawTimeout)
+		defer cancel()
 
-	tx, err := c.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx err=%w", err)
+		tx, err := c.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("begin tx err=%w", err)
+		}
+		defer func() {
+			_ = tx.Rollback()
+		}()
+
+		getUserQuery := prepareGetUserQuery(login)
+		decreaseUserBalanceQury := prepareDecreaseUserBalanceQuery(login, amount)
+		addWitdhrawalsQuery := prepareAddWithdrawalsQuery(orderID, login, amount)
+
+		getUserStmt, err := tx.PrepareContext(ctx, getUserQuery.request)
+		if err != nil {
+			return err
+		}
+
+		decreaseBalanceStmt, err := tx.PrepareContext(ctx, decreaseUserBalanceQury.request)
+		if err != nil {
+			return err
+		}
+
+		addWithdrawalsStmt, err := tx.PrepareContext(ctx, addWitdhrawalsQuery.request)
+		if err != nil {
+			return err
+		}
+
+		rows, err := getUserStmt.QueryContext(ctx, getUserQuery.args...)
+		if err != nil {
+			return err
+		}
+
+		user, err := ScanNewUser(rows)
+		if err != nil {
+			return fmt.Errorf("scan new user, err=%w", err)
+		}
+
+		if err := rows.Err(); err != nil {
+			return err
+		}
+
+		if user.Balance < amount {
+			return ErrNotEnoughFundsInTheAccount
+		}
+
+		_, err = decreaseBalanceStmt.ExecContext(ctx, decreaseUserBalanceQury.args...)
+		if err != nil {
+			return fmt.Errorf("decrese user=%s balance=%.4f on amount=%.4f err=%w", user.Login, user.Balance, amount, err)
+		}
+
+		_, err = addWithdrawalsStmt.ExecContext(ctx, addWitdhrawalsQuery.args...)
+		if err != nil {
+			return fmt.Errorf("add withdrawals query orderID=%s login=%s amount=%.4f err=%w", orderID, login, amount, err)
+		}
+
+		return tx.Commit()
 	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
 
-	userRows, err := doTransactionQuery(ctx, tx, prepareGetUserQuery(login))
-	if err != nil {
-		return err
-	}
-
-	user, err := ScanNewUser(userRows)
-	if err != nil {
-		return fmt.Errorf("scan new user, err=%w", err)
-	}
-
-	if err := userRows.Err(); err != nil {
-		return err
-	}
-
-	if user.Balance < amount {
-		return ErrNotEnoughFundsInTheAccount
-	}
-
-	_, err = doTransactionExec(ctx, tx, prepareDecreaseUserBalanceQuery(login, amount))
-	if err != nil {
-		return fmt.Errorf("decrese user=%s balance=%.4f on amount=%.4f err=%w", user.Login, user.Balance, amount, err)
-	}
-
-	_, err = doTransactionExec(ctx, tx, prepareAddWithdrawalsQuery(orderID, login, amount))
-	if err != nil {
-		return fmt.Errorf("add withdrawals query orderID=%s login=%s amount=%.4f err=%w", orderID, login, amount, err)
-	}
-
-	return tx.Commit()
+	return doTx(query)
 }
 
 type UserStatistic struct {
@@ -224,55 +247,115 @@ type UserStatistic struct {
 }
 
 func (c *Controller) GetUserStatistic(ctx context.Context, login string) (*UserStatistic, error) {
-	ctx, cancel := context.WithTimeout(ctx, withdrawTimeout)
-	defer cancel()
-
-	tx, err := c.db.BeginTx(ctx, nil)
+	userQuery := prepareGetUserQuery(login)
+	userRows, err := c.db.QueryContext(ctx, userQuery.request, userQuery.args...)
 	if err != nil {
-		return nil, fmt.Errorf("begin tx err=%w", err)
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	userRows, err := doTransactionQuery(ctx, tx, prepareGetUserQuery(login))
-	if err != nil {
-		return nil, fmt.Errorf("do tx get user, err=%w", err)
+		return nil, err
 	}
 
 	user, err := ScanNewUser(userRows)
 	if err != nil {
-		return nil, fmt.Errorf("scan user err=%w", err)
+		return nil, fmt.Errorf("scan new user, err=%w", err)
 	}
 
 	if err := userRows.Err(); err != nil {
 		return nil, err
 	}
 
-	withdrawRows, err := doTransactionQuery(ctx, tx, prepareWithdrawalsSumQuery(login))
+	withdrawalsQuery := prepareWithdrawalsSumQuery(login)
+	withdrawalsRows, err := c.db.QueryContext(ctx, withdrawalsQuery.request, withdrawalsQuery.args...)
 	if err != nil {
-		return nil, fmt.Errorf("do tx withdrawals sum by user=%s, err=%w", login, err)
-	}
-
-	if !withdrawRows.Next() {
-		return nil, ErrEmptyScannerResult
-	}
-
-	withdrawsSum := float64(0.0)
-	if err := withdrawRows.Scan(&withdrawsSum); err != nil {
-		return nil, fmt.Errorf("scan withdraws sum err=%w", err)
-	}
-
-	if err := withdrawRows.Err(); err != nil {
 		return nil, err
 	}
 
-	if err := tx.Commit(); err != nil {
-		zlog.Logger.Errorf("commit tx err=%s", err)
+	if !withdrawalsRows.Next() {
+		return nil, ErrEmptyScannerResult
+	}
+
+	var result interface{}
+	if err := withdrawalsRows.Scan(&result); err != nil {
+		return nil, fmt.Errorf("scan withdraws sum err=%w", err)
+	}
+
+	var withdrawsSum float64
+	switch v := result.(type) {
+	case float32:
+		withdrawsSum = float64(v)
+	case float64:
+		withdrawsSum = v
+	default:
+	}
+
+	if err := withdrawalsRows.Err(); err != nil {
+		return nil, err
 	}
 
 	return &UserStatistic{Balance: user.Balance, WithdrawalsTotalSum: withdrawsSum}, nil
 }
+
+// func (c *Controller) GetUserStatistic(ctx context.Context, login string) (*UserStatistic, error) {
+// 	ctx, cancel := context.WithTimeout(ctx, withdrawTimeout)
+// 	defer cancel()
+
+// 	tx, err := c.db.BeginTx(ctx, nil)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("begin tx err=%w", err)
+// 	}
+// 	defer func() {
+// 		_ = tx.Rollback()
+// 	}()
+
+// 	getUserQuery := prepareGetUserQuery(login)
+// 	withdrawaslSumQuey := prepareWithdrawalsSumQuery(login)
+
+// 	getUserStmt, err := tx.PrepareContext(ctx, getUserQuery.request)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	withdrawalsSumStmt, err := tx.PrepareContext(ctx, withdrawaslSumQuey.request)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	rows, err := getUserStmt.QueryContext(ctx, getUserQuery.args...)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	user, err := ScanNewUser(rows)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("scan new user, err=%w", err)
+// 	}
+
+// 	if err := rows.Err(); err != nil {
+// 		return nil, err
+// 	}
+
+// 	withdrawRows, err := withdrawalsSumStmt.QueryContext(ctx, withdrawaslSumQuey.args...)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("do tx withdrawals sum by user=%s, err=%w", login, err)
+// 	}
+
+// 	if !withdrawRows.Next() {
+// 		return nil, ErrEmptyScannerResult
+// 	}
+
+// 	withdrawsSum := float64(0.0)
+// 	if err := withdrawRows.Scan(&withdrawsSum); err != nil {
+// 		return nil, fmt.Errorf("scan withdraws sum err=%w", err)
+// 	}
+
+// 	if err := withdrawRows.Err(); err != nil {
+// 		return nil, err
+// 	}
+
+// 	if err := tx.Commit(); err != nil {
+// 		zlog.Logger.Errorf("commit tx err=%s", err)
+// 	}
+
+// 	return &UserStatistic{Balance: user.Balance, WithdrawalsTotalSum: withdrawsSum}, nil
+// }
 
 func (c *Controller) GetUserWithdrawals(ctx context.Context, user string) ([]*UserWithdrawRecord, error) {
 	queryFunc := c.makeQueryFunc(ctx, prepareGetAllUserWithdrawals(user), time.Second*5)
@@ -458,10 +541,10 @@ func (c *Controller) makeExecFunc(ctx context.Context, query *query) func() (*sq
 	}
 }
 
-func (c *Controller) makeQueryFunc(ctx context.Context, query *query, timeout time.Duration) func() (*sql.Rows, error) {
+func (c *Controller) makeQueryFunc(ctx context.Context, query *query, _ time.Duration) func() (*sql.Rows, error) {
 	return func() (*sql.Rows, error) {
-		ctx, cancel := context.WithTimeout(ctx, timeout)
-		defer cancel()
+		// ctx, cancel := context.WithTimeout(ctx, timeout)
+		// defer cancel()
 
 		rows, err := c.db.QueryContext(ctx, query.request, query.args...)
 		if err != nil {
@@ -501,6 +584,24 @@ func doQuery[T any](queryFunc func() (*T, error)) (*T, error) {
 	return nil, commonErr
 }
 
+func doTx(queryFunc func() error) error {
+	var commonErr error
+
+	trying := 3
+	for trying > 0 {
+		trying--
+		if err := queryFunc(); err != nil {
+			commonErr = errors.Join(commonErr, err)
+		}
+
+		if trying > 0 {
+			time.Sleep(time.Millisecond * 100)
+		}
+	}
+
+	return commonErr
+}
+
 func isRetriableError(err error) bool {
 	var pgErr *pgconn.PgError
 
@@ -513,52 +614,52 @@ func IsNotUniqueError(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation
 }
 
-func doTransactionQuery(ctx context.Context, tx *sql.Tx, query *query) (*sql.Rows, error) {
-	trying := 3
-	var totalErr error
-	for trying > 0 {
-		trying--
-		stmt, err := tx.PrepareContext(ctx, query.request)
-		if err != nil {
-			totalErr = errors.Join(totalErr, err)
-			time.Sleep(time.Millisecond * 100)
-			continue
-		}
+// func doTransactionQuery(ctx context.Context, tx *sql.Tx, query *query) (*sql.Rows, error) {
+// 	trying := 3
+// 	var totalErr error
+// 	for trying > 0 {
+// 		trying--
+// 		stmt, err := tx.PrepareContext(ctx, query.request)
+// 		if err != nil {
+// 			totalErr = errors.Join(totalErr, err)
+// 			time.Sleep(time.Millisecond * 100)
+// 			continue
+// 		}
 
-		rows, err := stmt.QueryContext(ctx, query.args...)
-		if err != nil {
-			totalErr = errors.Join(totalErr, err)
-			time.Sleep(time.Millisecond * 100)
-			continue
-		}
+// 		rows, err := stmt.QueryContext(ctx, query.args...)
+// 		if err != nil {
+// 			totalErr = errors.Join(totalErr, err)
+// 			time.Sleep(time.Millisecond * 100)
+// 			continue
+// 		}
 
-		return rows, nil
-	}
+// 		return rows, nil
+// 	}
 
-	return nil, totalErr
-}
+// 	return nil, totalErr
+// }
 
-func doTransactionExec(ctx context.Context, tx *sql.Tx, query *query) (sql.Result, error) {
-	trying := 3
-	var totalErr error
-	for trying > 0 {
-		trying--
-		stmt, err := tx.PrepareContext(ctx, query.request)
-		if err != nil {
-			totalErr = errors.Join(totalErr, err)
-			time.Sleep(time.Millisecond * 100)
-			continue
-		}
+// func doTransactionExec(ctx context.Context, tx *sql.Tx, query *query) (sql.Result, error) {
+// 	trying := 3
+// 	var totalErr error
+// 	for trying > 0 {
+// 		trying--
+// 		stmt, err := tx.PrepareContext(ctx, query.request)
+// 		if err != nil {
+// 			totalErr = errors.Join(totalErr, err)
+// 			time.Sleep(time.Millisecond * 100)
+// 			continue
+// 		}
 
-		res, err := stmt.ExecContext(ctx, query.args...)
-		if err != nil {
-			totalErr = errors.Join(totalErr, err)
-			time.Sleep(time.Millisecond * 100)
-			continue
-		}
+// 		res, err := stmt.ExecContext(ctx, query.args...)
+// 		if err != nil {
+// 			totalErr = errors.Join(totalErr, err)
+// 			time.Sleep(time.Millisecond * 100)
+// 			continue
+// 		}
 
-		return res, nil
-	}
+// 		return res, nil
+// 	}
 
-	return nil, totalErr
-}
+// 	return nil, totalErr
+// }

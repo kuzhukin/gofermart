@@ -73,13 +73,6 @@ func prepareGetUserByTokenQuery(token string) *query {
 	}
 }
 
-// func prepareIncreaseUserBalanceQuery(login string, balance float64) *query {
-// 	return &query{
-// 		request: increaseUserBalanceQuery,
-// 		args:    []interface{}{balance, login},
-// 	}
-// }
-
 func prepareDecreaseUserBalanceQuery(login string, balance float64) *query {
 	return &query{
 		request: decreaseUserBalanceQuery,
