@@ -34,7 +34,7 @@ func (l *loggingResponseWriter) WriteHeader(status int) {
 func (l *loggingResponseWriter) doRequestWithTimer(h http.Handler, r *http.Request) time.Duration {
 	start := time.Now()
 
-	h.ServeHTTP(l, r)
+	h.ServeHTTP(l.ResponseWriter, r)
 
 	return time.Since(start)
 }

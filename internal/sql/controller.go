@@ -48,6 +48,10 @@ func StartNewController(dataSourceName string) (*Controller, error) {
 		return nil, fmt.Errorf("sql open db=%s err=%w", dataSourceName, err)
 	}
 
+	if err := db.Ping(); err != nil {
+		return nil, fmt.Errorf("db connection err=%w", err)
+	}
+
 	ctrl := &Controller{db: db, dbPath: dataSourceName}
 	if err := ctrl.init(); err != nil {
 		return nil, fmt.Errorf("init, err=%w", err)
@@ -176,83 +180,59 @@ func (c *Controller) FindUserByToken(ctx context.Context, token string) (*User, 
 var ErrNotEnoughFundsInTheAccount = errors.New("there are not enough funds in the account")
 
 func (c *Controller) Withdraw(ctx context.Context, login string, orderID string, amount float64) error {
-	query := func() error {
-		ctx, cancel := context.WithTimeout(ctx, withdrawTimeout)
-		defer cancel()
+	tx, err := c.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx err=%w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
-		tx, err := c.db.BeginTx(ctx, nil)
+	getUserQuery := prepareGetUserQuery(login)
+
+	rows, err := tx.QueryContext(ctx, getUserQuery.request, getUserQuery.args...)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err := rows.Close()
 		if err != nil {
-			return fmt.Errorf("begin tx err=%w", err)
+			zlog.Logger.Errorf("rows close err=%s", err)
 		}
-		defer func() {
-			_ = tx.Rollback()
-		}()
+	}()
 
-		getUserQuery := prepareGetUserQuery(login)
-		decreaseUserBalanceQury := prepareDecreaseUserBalanceQuery(login, amount)
-		addWitdhrawalsQuery := prepareAddWithdrawalsQuery(orderID, login, amount)
-
-		getUserStmt, err := tx.PrepareContext(ctx, getUserQuery.request)
-		if err != nil {
-			return err
-		}
-		defer getUserStmt.Close()
-
-		decreaseBalanceStmt, err := tx.PrepareContext(ctx, decreaseUserBalanceQury.request)
-		if err != nil {
-			return err
-		}
-		defer decreaseBalanceStmt.Close()
-
-		addWithdrawalsStmt, err := tx.PrepareContext(ctx, addWitdhrawalsQuery.request)
-		if err != nil {
-			return err
-		}
-		defer addWithdrawalsStmt.Close()
-
-		rows, err := getUserStmt.QueryContext(ctx, getUserQuery.args...)
-		if err != nil {
-			return err
-		}
-		defer func() {
-			err := rows.Close()
-			if err != nil {
-				zlog.Logger.Errorf("rows close err=%s", err)
-			}
-		}()
-
-		if !rows.Next() {
-			return ErrEmptyScannerResult
-		}
-
-		user := &User{}
-		err = user.Scan(rows)
-		if err != nil {
-			return fmt.Errorf("scan new user, err=%w", err)
-		}
-
-		if err := rows.Err(); err != nil {
-			return err
-		}
-
-		if user.Balance < amount {
-			return ErrNotEnoughFundsInTheAccount
-		}
-
-		_, err = decreaseBalanceStmt.ExecContext(ctx, decreaseUserBalanceQury.args...)
-		if err != nil {
-			return fmt.Errorf("decrese user=%s balance=%.4f on amount=%.4f err=%w", user.Login, user.Balance, amount, err)
-		}
-
-		_, err = addWithdrawalsStmt.ExecContext(ctx, addWitdhrawalsQuery.args...)
-		if err != nil {
-			return fmt.Errorf("add withdrawals query orderID=%s login=%s amount=%.4f err=%w", orderID, login, amount, err)
-		}
-
-		return tx.Commit()
+	if !rows.Next() {
+		return ErrEmptyScannerResult
 	}
 
-	return c.doTx(query)
+	user := &User{}
+	if err = user.Scan(rows); err != nil {
+		return fmt.Errorf("scan new user, err=%w", err)
+	}
+
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	if user.Balance < amount {
+		return ErrNotEnoughFundsInTheAccount
+	}
+
+	decreaseUserBalanceQury := prepareDecreaseUserBalanceQuery(login, amount)
+
+	_, err = tx.ExecContext(ctx, decreaseUserBalanceQury.request, decreaseUserBalanceQury.args...)
+	if err != nil {
+		return fmt.Errorf("decrese user=%s balance=%.4f on amount=%.4f err=%w", user.Login, user.Balance, amount, err)
+	}
+
+	addWitdhrawalsQuery := prepareAddWithdrawalsQuery(orderID, login, amount)
+
+	_, err = tx.ExecContext(ctx, addWitdhrawalsQuery.request, addWitdhrawalsQuery.args...)
+	if err != nil {
+		return fmt.Errorf("add withdrawals query orderID=%s login=%s amount=%.4f err=%w", orderID, login, amount, err)
+	}
+
+	return tx.Commit()
 }
 
 type UserStatistic struct {
@@ -260,132 +240,135 @@ type UserStatistic struct {
 	WithdrawalsTotalSum float64
 }
 
-func (c *Controller) GetUserStatistic(ctx context.Context, login string) (*UserStatistic, error) {
-	userQuery := prepareGetUserQuery(login)
-	userRows, err := c.db.QueryContext(ctx, userQuery.request, userQuery.args...)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		err := userRows.Close()
-		if err != nil {
-			zlog.Logger.Errorf("rows close err=%s", err)
-		}
-	}()
-	if !userRows.Next() {
-		return nil, ErrEmptyScannerResult
-	}
-
-	user := &User{}
-	err = user.Scan(userRows)
-	if err != nil {
-		return nil, fmt.Errorf("scan new user, err=%w", err)
-	}
-
-	if err := userRows.Err(); err != nil {
-		return nil, err
-	}
-
-	withdrawalsQuery := prepareWithdrawalsSumQuery(login)
-	withdrawalsRows, err := c.db.QueryContext(ctx, withdrawalsQuery.request, withdrawalsQuery.args...)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		err := withdrawalsRows.Close()
-		if err != nil {
-			zlog.Logger.Errorf("rows close err=%s", err)
-		}
-	}()
-
-	if !withdrawalsRows.Next() {
-		return nil, ErrEmptyScannerResult
-	}
-
-	var result interface{}
-	if err := withdrawalsRows.Scan(&result); err != nil {
-		return nil, fmt.Errorf("scan withdraws sum err=%w", err)
-	}
-
-	var withdrawsSum float64
-	switch v := result.(type) {
-	case float32:
-		withdrawsSum = float64(v)
-	case float64:
-		withdrawsSum = v
-	default:
-	}
-
-	if err := withdrawalsRows.Err(); err != nil {
-		return nil, err
-	}
-
-	return &UserStatistic{Balance: user.Balance, WithdrawalsTotalSum: withdrawsSum}, nil
-}
-
 // func (c *Controller) GetUserStatistic(ctx context.Context, login string) (*UserStatistic, error) {
-// 	ctx, cancel := context.WithTimeout(ctx, withdrawTimeout)
-// 	defer cancel()
-
-// 	tx, err := c.db.BeginTx(ctx, nil)
+// 	userQuery := prepareGetUserQuery(login)
+// 	userRows, err := c.db.QueryContext(ctx, userQuery.request, userQuery.args...)
 // 	if err != nil {
-// 		return nil, fmt.Errorf("begin tx err=%w", err)
+// 		return nil, err
 // 	}
 // 	defer func() {
-// 		_ = tx.Rollback()
+// 		err := userRows.Close()
+// 		if err != nil {
+// 			zlog.Logger.Errorf("rows close err=%s", err)
+// 		}
 // 	}()
-
-// 	getUserQuery := prepareGetUserQuery(login)
-// 	withdrawaslSumQuey := prepareWithdrawalsSumQuery(login)
-
-// 	getUserStmt, err := tx.PrepareContext(ctx, getUserQuery.request)
-// 	if err != nil {
-// 		return nil, err
+// 	if !userRows.Next() {
+// 		return nil, ErrEmptyScannerResult
 // 	}
 
-// 	withdrawalsSumStmt, err := tx.PrepareContext(ctx, withdrawaslSumQuey.request)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	rows, err := getUserStmt.QueryContext(ctx, getUserQuery.args...)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	user, err := ScanNewUser(rows)
+// 	user := &User{}
+// 	err = user.Scan(userRows)
 // 	if err != nil {
 // 		return nil, fmt.Errorf("scan new user, err=%w", err)
 // 	}
 
-// 	if err := rows.Err(); err != nil {
+// 	if err := userRows.Err(); err != nil {
 // 		return nil, err
 // 	}
 
-// 	withdrawRows, err := withdrawalsSumStmt.QueryContext(ctx, withdrawaslSumQuey.args...)
+// 	withdrawalsQuery := prepareWithdrawalsSumQuery(login)
+// 	withdrawalsRows, err := c.db.QueryContext(ctx, withdrawalsQuery.request, withdrawalsQuery.args...)
 // 	if err != nil {
-// 		return nil, fmt.Errorf("do tx withdrawals sum by user=%s, err=%w", login, err)
+// 		return nil, err
 // 	}
+// 	defer func() {
+// 		err := withdrawalsRows.Close()
+// 		if err != nil {
+// 			zlog.Logger.Errorf("rows close err=%s", err)
+// 		}
+// 	}()
 
-// 	if !withdrawRows.Next() {
+// 	if !withdrawalsRows.Next() {
 // 		return nil, ErrEmptyScannerResult
 // 	}
 
-// 	withdrawsSum := float64(0.0)
-// 	if err := withdrawRows.Scan(&withdrawsSum); err != nil {
+// 	var result interface{}
+// 	if err := withdrawalsRows.Scan(&result); err != nil {
 // 		return nil, fmt.Errorf("scan withdraws sum err=%w", err)
 // 	}
 
-// 	if err := withdrawRows.Err(); err != nil {
-// 		return nil, err
+// 	var withdrawsSum float64
+// 	switch v := result.(type) {
+// 	case float32:
+// 		withdrawsSum = float64(v)
+// 	case float64:
+// 		withdrawsSum = v
+// 	default:
 // 	}
 
-// 	if err := tx.Commit(); err != nil {
-// 		zlog.Logger.Errorf("commit tx err=%s", err)
+// 	if err := withdrawalsRows.Err(); err != nil {
+// 		return nil, err
 // 	}
 
 // 	return &UserStatistic{Balance: user.Balance, WithdrawalsTotalSum: withdrawsSum}, nil
 // }
+
+func (c *Controller) GetUserStatistic(ctx context.Context, login string) (*UserStatistic, error) {
+	tx, err := c.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx err=%w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	getUserQuery := prepareGetUserQuery(login)
+	withdrawaslSumQuey := prepareWithdrawalsSumQuery(login)
+
+	rows, err := tx.QueryContext(ctx, getUserQuery.request, getUserQuery.args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			zlog.Logger.Errorf("rows close err=%s", err)
+		}
+	}()
+
+	if !rows.Next() {
+		return nil, ErrEmptyScannerResult
+	}
+
+	user := &User{}
+	if err := user.Scan(rows); err != nil {
+		return nil, err
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	withdrawRows, err := tx.QueryContext(ctx, withdrawaslSumQuey.request, withdrawaslSumQuey.args...)
+	if err != nil {
+		return nil, fmt.Errorf("do tx withdrawals sum by user=%s, err=%w", login, err)
+	}
+	defer func() {
+		err := withdrawRows.Close()
+		if err != nil {
+			zlog.Logger.Errorf("rows close err=%s", err)
+		}
+	}()
+
+	if !withdrawRows.Next() {
+		return nil, ErrEmptyScannerResult
+	}
+
+	withdrawsSum := float64(0.0)
+	if err := withdrawRows.Scan(&withdrawsSum); err != nil {
+		return nil, fmt.Errorf("scan withdraws sum err=%w", err)
+	}
+
+	if err := withdrawRows.Err(); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		zlog.Logger.Errorf("commit tx err=%s", err)
+	}
+
+	return &UserStatistic{Balance: user.Balance, WithdrawalsTotalSum: withdrawsSum}, nil
+}
 
 func (c *Controller) GetUserWithdrawals(ctx context.Context, user string) ([]*UserWithdrawRecord, error) {
 	queryFunc := c.makeQueryFunc(ctx, prepareGetAllUserWithdrawals(user), time.Second*5)
@@ -550,23 +533,11 @@ func (c *Controller) UpdateAccrual(ctx context.Context, order *Order) error {
 		_ = tx.Rollback()
 	}()
 
-	updateOrderStmt, err := tx.PrepareContext(ctx, updateOrderAccrualQuery)
-	if err != nil {
-		return nil
-	}
-	defer updateOrderStmt.Close()
-
-	updateBalanceStmt, err := tx.PrepareContext(ctx, increaseUserBalanceQuery)
-	if err != nil {
-		return nil
-	}
-	defer updateBalanceStmt.Close()
-
-	if _, err := updateOrderStmt.ExecContext(ctx, order.Status, order.Accrual, order.ID); err != nil {
+	if _, err := tx.ExecContext(ctx, updateOrderAccrualQuery, order.Status, order.Accrual, order.ID); err != nil {
 		return err
 	}
 
-	if _, err := updateBalanceStmt.ExecContext(ctx, order.Accrual, order.User); err != nil {
+	if _, err := tx.ExecContext(ctx, increaseUserBalanceQuery, order.Accrual, order.User); err != nil {
 		return err
 	}
 
@@ -629,24 +600,6 @@ func doQuery[T any](queryFunc func() (*T, error)) (*T, error) {
 	}
 
 	return nil, commonErr
-}
-
-func (c *Controller) doTx(queryFunc func() error) error {
-	var commonErr error
-
-	trying := 3
-	for trying > 0 {
-		trying--
-		if err := queryFunc(); err != nil {
-			commonErr = errors.Join(commonErr, err)
-		}
-
-		if trying > 0 {
-			time.Sleep(time.Millisecond * 100)
-		}
-	}
-
-	return commonErr
 }
 
 func isRetriableError(err error) bool {
