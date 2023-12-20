@@ -166,13 +166,32 @@ func (h *OrdersHandler) serveGetOrderList(w http.ResponseWriter, r *http.Request
 	}
 }
 
+type OrderResponse struct {
+	Number     string  `json:"number"`
+	Status     string  `json:"status"`
+	Accrual    float64 `json:"accrual"`
+	UploadedAt string  `json:"uploaded_at"`
+}
+
 func (h *OrdersHandler) getUserOrders(r *http.Request, login string) ([]byte, error) {
 	orders, err := h.orderscontroller.GerOrders(r.Context(), login)
 	if err != nil {
 		return nil, err
 	}
 
-	data, err := json.Marshal(orders)
+	// reformatting
+	responses := make([]*OrderResponse, 0, len(orders))
+	for _, order := range orders {
+		resp := &OrderResponse{
+			Number:     order.ID,
+			Status:     string(order.Status),
+			Accrual:    float64(order.Accrual),
+			UploadedAt: order.UpdaloadTime,
+		}
+		responses = append(responses, resp)
+	}
+
+	data, err := json.Marshal(responses)
 	if err != nil {
 		return nil, err
 	}

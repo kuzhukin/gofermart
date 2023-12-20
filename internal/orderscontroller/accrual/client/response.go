@@ -27,5 +27,5 @@ var ErrRequestsLimitExceeded = errors.New("accrual system request limit exceeded
 type AccrualResponse struct {
 	Order   string  `json:"order"`
 	Status  string  `json:"status"`
-	Accrual float32 `json:"accrual"`
+	Accrual float64 `json:"accrual"`
 }

@@ -42,7 +42,7 @@ type Order struct {
 	ID           string      `json:"id"`
 	User         string      `json:"user"`
 	Status       OrderStatus `json:"status"`
-	Accrual      float32     `json:"accrual,omitempty"`
+	Accrual      float64     `json:"accrual,omitempty"`
 	UpdaloadTime string      `json:"uploaded_at"`
 }
 
