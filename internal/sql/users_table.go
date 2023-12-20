@@ -1,6 +1,7 @@
 package sql
 
 import (
+	"database/sql"
 	"errors"
 )
 
@@ -27,8 +28,21 @@ type User struct {
 	Balance   float64
 }
 
-func (u *User) Scan(scanner objectScanner) error {
-	return scanner.Scan(&u.Login, &u.AuthToken, &u.Balance)
+func (u *User) scan(rows *sql.Rows) error {
+	return rows.Scan(&u.Login, &u.AuthToken, &u.Balance)
+}
+
+func scanUserFromRows(rows *sql.Rows) (*User, error) {
+	if !rows.Next() {
+		return nil, ErrEmptyScannerResult
+	}
+
+	user := &User{}
+	if err := user.scan(rows); err != nil {
+		return nil, err
+	}
+
+	return user, nil
 }
 
 var ErrEmptyScannerResult = errors.New("sql obj scanner has empty result")

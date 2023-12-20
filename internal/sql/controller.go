@@ -26,12 +26,6 @@ const (
 	updateOrderAccrualTimeout = time.Second * 2
 )
 
-type objectScanner interface {
-	Next() bool
-	Scan(dest ...any) error
-	Err() error
-}
-
 type query struct {
 	request string
 	args    []interface{}
@@ -103,9 +97,6 @@ func (c *Controller) exec(query string) error {
 var ErrUserIsNotFound = errors.New("user isn't found")
 
 func (c *Controller) CreateUser(ctx context.Context, login string, token string) error {
-	// ctx, cancel := context.WithTimeout(ctx, createUserTimeout)
-	// defer cancel()
-
 	queryFunc := c.makeExecFunc(ctx, prepareCreateUserQuery(login, token))
 
 	_, err := doQuery(queryFunc)
@@ -160,12 +151,12 @@ func (c *Controller) FindUserByToken(ctx context.Context, token string) (*User, 
 		}
 	}()
 
-	user := &User{}
 	if !rows.Next() {
 		return nil, ErrUserIsNotFound
 	}
 
-	if err := rows.Scan(&user.Login, &user.AuthToken, &user.Balance); err != nil {
+	user := &User{}
+	if err := user.scan(rows); err != nil {
 		return nil, fmt.Errorf("rows scan to user, err=%w", err)
 	}
 
@@ -188,33 +179,10 @@ func (c *Controller) Withdraw(ctx context.Context, login string, orderID string,
 		_ = tx.Rollback()
 	}()
 
-	getUserQuery := prepareGetUserQuery(login)
-
-	rows, err := tx.QueryContext(ctx, getUserQuery.request, getUserQuery.args...)
+	user, err := doTransactionQuery(ctx, tx, prepareGetUserQuery(login), scanUserFromRows)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		err := rows.Close()
-		if err != nil {
-			zlog.Logger.Errorf("rows close err=%s", err)
-		}
-	}()
-
-	if !rows.Next() {
-		return ErrEmptyScannerResult
-	}
-
-	user := &User{}
-	if err = user.Scan(rows); err != nil {
-		return fmt.Errorf("scan new user, err=%w", err)
-	}
-
-	if err := rows.Err(); err != nil {
-		return err
-	}
-
-	rows.Close()
 
 	if user.Balance < amount {
 		return ErrNotEnoughFundsInTheAccount
@@ -242,69 +210,6 @@ type UserStatistic struct {
 	WithdrawalsTotalSum float64
 }
 
-// func (c *Controller) GetUserStatistic(ctx context.Context, login string) (*UserStatistic, error) {
-// 	userQuery := prepareGetUserQuery(login)
-// 	userRows, err := c.db.QueryContext(ctx, userQuery.request, userQuery.args...)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	defer func() {
-// 		err := userRows.Close()
-// 		if err != nil {
-// 			zlog.Logger.Errorf("rows close err=%s", err)
-// 		}
-// 	}()
-// 	if !userRows.Next() {
-// 		return nil, ErrEmptyScannerResult
-// 	}
-
-// 	user := &User{}
-// 	err = user.Scan(userRows)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("scan new user, err=%w", err)
-// 	}
-
-// 	if err := userRows.Err(); err != nil {
-// 		return nil, err
-// 	}
-
-// 	withdrawalsQuery := prepareWithdrawalsSumQuery(login)
-// 	withdrawalsRows, err := c.db.QueryContext(ctx, withdrawalsQuery.request, withdrawalsQuery.args...)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	defer func() {
-// 		err := withdrawalsRows.Close()
-// 		if err != nil {
-// 			zlog.Logger.Errorf("rows close err=%s", err)
-// 		}
-// 	}()
-
-// 	if !withdrawalsRows.Next() {
-// 		return nil, ErrEmptyScannerResult
-// 	}
-
-// 	var result interface{}
-// 	if err := withdrawalsRows.Scan(&result); err != nil {
-// 		return nil, fmt.Errorf("scan withdraws sum err=%w", err)
-// 	}
-
-// 	var withdrawsSum float64
-// 	switch v := result.(type) {
-// 	case float32:
-// 		withdrawsSum = float64(v)
-// 	case float64:
-// 		withdrawsSum = v
-// 	default:
-// 	}
-
-// 	if err := withdrawalsRows.Err(); err != nil {
-// 		return nil, err
-// 	}
-
-// 	return &UserStatistic{Balance: user.Balance, WithdrawalsTotalSum: withdrawsSum}, nil
-// }
-
 func (c *Controller) GetUserStatistic(ctx context.Context, login string) (*UserStatistic, error) {
 	tx, err := c.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -315,70 +220,15 @@ func (c *Controller) GetUserStatistic(ctx context.Context, login string) (*UserS
 	}()
 
 	getUserQuery := prepareGetUserQuery(login)
-	withdrawaslSumQuey := prepareWithdrawalsSumQuery(login)
+	withdrawaslSumQuery := prepareWithdrawalsSumQuery(login)
 
-	user, err := func() (*User, error) {
-		rows, err := tx.QueryContext(ctx, getUserQuery.request, getUserQuery.args...)
-		if err != nil {
-			return nil, err
-		}
-		defer func() {
-			err := rows.Close()
-			if err != nil {
-				zlog.Logger.Errorf("rows close err=%s", err)
-			}
-		}()
-
-		if !rows.Next() {
-			return nil, ErrEmptyScannerResult
-		}
-
-		user := &User{}
-		if err := user.Scan(rows); err != nil {
-			return nil, err
-		}
-
-		if err := rows.Err(); err != nil {
-			return nil, err
-		}
-
-		return user, err
-	}()
-
+	user, err := doTransactionQuery(ctx, tx, getUserQuery, scanUserFromRows)
 	if err != nil {
 		return nil, err
 	}
 
-	withdrawRows, err := tx.QueryContext(ctx, withdrawaslSumQuey.request, withdrawaslSumQuey.args...)
+	withdrawalsSum, err := doTransactionQuery(ctx, tx, withdrawaslSumQuery, scanWithdrawalsSumFromRows)
 	if err != nil {
-		return nil, fmt.Errorf("do tx withdrawals sum by user=%s, err=%w", login, err)
-	}
-	defer func() {
-		err := withdrawRows.Close()
-		if err != nil {
-			zlog.Logger.Errorf("rows close err=%s", err)
-		}
-	}()
-
-	if !withdrawRows.Next() {
-		return nil, ErrEmptyScannerResult
-	}
-
-	var result interface{}
-	if err := withdrawRows.Scan(&result); err != nil {
-		return nil, fmt.Errorf("scan withdraws sum err=%w", err)
-	}
-
-	var withdrawsSum float64
-	switch v := result.(type) {
-	case float32:
-		withdrawsSum = float64(v)
-	case float64:
-		withdrawsSum = v
-	default:
-	}
-
-	if err := withdrawRows.Err(); err != nil {
 		return nil, err
 	}
 
@@ -386,7 +236,7 @@ func (c *Controller) GetUserStatistic(ctx context.Context, login string) (*UserS
 		zlog.Logger.Errorf("commit tx err=%s", err)
 	}
 
-	return &UserStatistic{Balance: user.Balance, WithdrawalsTotalSum: withdrawsSum}, nil
+	return &UserStatistic{Balance: user.Balance, WithdrawalsTotalSum: withdrawalsSum}, nil
 }
 
 func (c *Controller) GetUserWithdrawals(ctx context.Context, user string) ([]*UserWithdrawRecord, error) {
@@ -404,8 +254,8 @@ func (c *Controller) GetUserWithdrawals(ctx context.Context, user string) ([]*Us
 
 	list := make([]*UserWithdrawRecord, 0)
 	for rows.Next() {
-		wr, err := ScanNewWithdrawRecord(rows)
-		if err != nil {
+		wr := &UserWithdrawRecord{}
+		if err := wr.scan(rows); err != nil {
 			return nil, fmt.Errorf("scan withdraw err=%w", err)
 		}
 
@@ -442,12 +292,12 @@ func (c *Controller) FindOrder(ctx context.Context, orderID string) (*Order, err
 		}
 	}()
 
-	order := &Order{}
-
 	if !rows.Next() {
 		return nil, ErrOrderIsNotFound
 	}
-	if err := rows.Scan(&order.ID, &order.Status, &order.Accrual, &order.User, &order.UpdaloadTime); err != nil {
+
+	order := &Order{}
+	if err := order.scan(rows); err != nil {
 		return nil, fmt.Errorf("rows scan to order err=%w", err)
 	}
 
@@ -459,14 +309,11 @@ func (c *Controller) FindOrder(ctx context.Context, orderID string) (*Order, err
 }
 
 func (c *Controller) CreateOrder(ctx context.Context, login string, orderID string) error {
-	// ctx, cancel := context.WithTimeout(ctx, createOrderTimeout)
-	// defer cancel()
-
 	execFunc := c.makeExecFunc(ctx, prepareCreateOrderQuery(orderID, login))
 
 	_, err := doQuery(execFunc)
 	if err != nil {
-		if IsNotUniqueError(err) {
+		if isNotUniqueError(err) {
 			return ErrOrderAlreadyExist
 		}
 
@@ -493,8 +340,7 @@ func (c *Controller) GetUserOrders(ctx context.Context, login string) ([]*Order,
 	orders := make([]*Order, 0)
 	for rows.Next() {
 		order := &Order{}
-		err := rows.Scan(&order.ID, &order.Status, &order.Accrual, &order.User, &order.UpdaloadTime)
-		if err != nil {
+		if err := order.scan(rows); err != nil {
 			return nil, fmt.Errorf("scan rows, err=%w", err)
 		}
 
@@ -525,7 +371,7 @@ func (c *Controller) GetUnexecutedOrders(ctx context.Context) ([]*Order, error) 
 	orders := make([]*Order, 0)
 	for rows.Next() {
 		order := &Order{}
-		err := rows.Scan(&order.ID, &order.Status, &order.Accrual, &order.User, &order.UpdaloadTime)
+		err := order.scan(rows)
 		if err != nil {
 			return nil, fmt.Errorf("scan rows, err=%w", err)
 		}
@@ -541,9 +387,6 @@ func (c *Controller) GetUnexecutedOrders(ctx context.Context) ([]*Order, error) 
 }
 
 func (c *Controller) UpdateAccrual(ctx context.Context, order *Order) error {
-	// ctx, cancel := context.WithTimeout(ctx, updateOrderAccrualTimeout)
-	// defer cancel()
-
 	tx, err := c.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx err=%w", err)
@@ -580,9 +423,6 @@ func (c *Controller) makeExecFunc(ctx context.Context, query *query) func() (*sq
 
 func (c *Controller) makeQueryFunc(ctx context.Context, query *query, _ time.Duration) func() (*sql.Rows, error) {
 	return func() (*sql.Rows, error) {
-		// ctx, cancel := context.WithTimeout(ctx, timeout)
-		// defer cancel()
-
 		rows, err := c.db.QueryContext(ctx, query.request, query.args...)
 		if err != nil {
 			return nil, fmt.Errorf("query metric, err=%w", err)
@@ -627,58 +467,34 @@ func isRetriableError(err error) bool {
 	return errors.As(err, &pgErr) && pgerrcode.IsConnectionException(pgErr.Code)
 }
 
-func IsNotUniqueError(err error) bool {
+func isNotUniqueError(err error) bool {
 	var pgErr *pgconn.PgError
 
 	return errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation
 }
 
-// func doTransactionQuery(ctx context.Context, tx *sql.Tx, query *query) (*sql.Rows, error) {
-// 	trying := 3
-// 	var totalErr error
-// 	for trying > 0 {
-// 		trying--
-// 		stmt, err := tx.PrepareContext(ctx, query.request)
-// 		if err != nil {
-// 			totalErr = errors.Join(totalErr, err)
-// 			time.Sleep(time.Millisecond * 100)
-// 			continue
-// 		}
+func doTransactionQuery[T any](ctx context.Context, tx *sql.Tx, query *query, parseFun func(rows *sql.Rows) (T, error)) (T, error) {
+	var result T
 
-// 		rows, err := stmt.QueryContext(ctx, query.args...)
-// 		if err != nil {
-// 			totalErr = errors.Join(totalErr, err)
-// 			time.Sleep(time.Millisecond * 100)
-// 			continue
-// 		}
+	rows, err := tx.QueryContext(ctx, query.request, query.args...)
+	if err != nil {
+		return result, err
+	}
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			zlog.Logger.Errorf("rows close err=%s", err)
+		}
+	}()
 
-// 		return rows, nil
-// 	}
+	result, err = parseFun(rows)
+	if err != nil {
+		return result, err
+	}
 
-// 	return nil, totalErr
-// }
+	if err := rows.Err(); err != nil {
+		return result, err
+	}
 
-// func doTransactionExec(ctx context.Context, tx *sql.Tx, query *query) (sql.Result, error) {
-// 	trying := 3
-// 	var totalErr error
-// 	for trying > 0 {
-// 		trying--
-// 		stmt, err := tx.PrepareContext(ctx, query.request)
-// 		if err != nil {
-// 			totalErr = errors.Join(totalErr, err)
-// 			time.Sleep(time.Millisecond * 100)
-// 			continue
-// 		}
-
-// 		res, err := stmt.ExecContext(ctx, query.args...)
-// 		if err != nil {
-// 			totalErr = errors.Join(totalErr, err)
-// 			time.Sleep(time.Millisecond * 100)
-// 			continue
-// 		}
-
-// 		return res, nil
-// 	}
-
-// 	return nil, totalErr
-// }
+	return result, nil
+}

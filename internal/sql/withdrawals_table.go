@@ -1,6 +1,7 @@
 package sql
 
 import (
+	"database/sql"
 	"fmt"
 	"time"
 )
@@ -26,14 +27,35 @@ type UserWithdrawRecord struct {
 	ProcessedAt string  `json:"processed_at"`
 }
 
-func ScanNewWithdrawRecord(scanner objectScanner) (*UserWithdrawRecord, error) {
-	u := &UserWithdrawRecord{}
-	err := scanner.Scan(&u.OrderID, &u.Accrual, &u.ProcessedAt)
+func (r *UserWithdrawRecord) scan(rows *sql.Rows) error {
+	err := rows.Scan(&r.OrderID, &r.Accrual, &r.ProcessedAt)
 	if err != nil {
-		return nil, fmt.Errorf("withdraw record scan err=%w", err)
+		return fmt.Errorf("withdraw record scan err=%w", err)
 	}
 
-	return u, nil
+	return nil
+}
+
+func scanWithdrawalsSumFromRows(rows *sql.Rows) (float64, error) {
+	if !rows.Next() {
+		return 0, ErrEmptyScannerResult
+	}
+
+	var result interface{}
+	if err := rows.Scan(&result); err != nil {
+		return 0, fmt.Errorf("scan withdraws sum err=%w", err)
+	}
+
+	var withdrawsSum float64
+	switch v := result.(type) {
+	case float32:
+		withdrawsSum = float64(v)
+	case float64:
+		withdrawsSum = v
+	default:
+	}
+
+	return withdrawsSum, nil
 }
 
 func prepareAddWithdrawalsQuery(order string, user string, sum float64) *query {

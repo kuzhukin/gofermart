@@ -1,6 +1,9 @@
 package sql
 
-import "time"
+import (
+	"database/sql"
+	"time"
+)
 
 const (
 
@@ -41,6 +44,10 @@ type Order struct {
 	Status       OrderStatus `json:"status"`
 	Accrual      float32     `json:"accrual,omitempty"`
 	UpdaloadTime string      `json:"uploaded_at"`
+}
+
+func (o *Order) scan(rows *sql.Rows) error {
+	return rows.Scan(&o.ID, &o.Status, &o.Accrual, &o.User, &o.UpdaloadTime)
 }
 
 func prepareCreateOrderQuery(orderID string, user string) *query {
