@@ -45,7 +45,7 @@ run:
 	docker rm gophermartpostgres && \
 	docker run -d --name gophermartpostgres -p 5431:5432 -e POSTGRES_DB=gophermart -e POSTGRES_USER=gophermart -e POSTGRES_PASSWORD=12345 postgres:12-alpine && \
 	sleep 5 && \
-	cmd/gophermart/gophermart -a localhost:8080 -d "postgres://gophermart:12345@127.0.0.1:5431/gophermart" -r "localhost:33555"
+	cmd/gophermart/gophermart -a localhost:8080 -d "postgres://gophermart:12345@127.0.0.1:5431/gophermart" -r "http://localhost:33555"
 
 run_accrual:
 	cmd/accrual/accrual_linux_amd64 -a "localhost:33555"

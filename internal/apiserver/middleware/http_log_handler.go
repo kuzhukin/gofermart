@@ -9,32 +9,36 @@ import (
 var _ http.ResponseWriter = &loggingResponseWriter{}
 
 type loggingResponseWriter struct {
-	http.ResponseWriter
+	rw     http.ResponseWriter
 	size   int
 	status int
 }
 
 func newLoggingResponseWriter(w http.ResponseWriter) *loggingResponseWriter {
 	return &loggingResponseWriter{
-		ResponseWriter: w,
+		rw: w,
 	}
 }
 
 func (l *loggingResponseWriter) Write(b []byte) (int, error) {
-	size, err := l.ResponseWriter.Write(b)
+	size, err := l.rw.Write(b)
 	l.size += size
 	return size, err
 }
 
 func (l *loggingResponseWriter) WriteHeader(status int) {
-	l.ResponseWriter.WriteHeader(status)
+	l.rw.WriteHeader(status)
 	l.status = status
+}
+
+func (l *loggingResponseWriter) Header() http.Header {
+	return l.rw.Header()
 }
 
 func (l *loggingResponseWriter) doRequestWithTimer(h http.Handler, r *http.Request) time.Duration {
 	start := time.Now()
 
-	h.ServeHTTP(l.ResponseWriter, r)
+	h.ServeHTTP(l, r)
 
 	return time.Since(start)
 }

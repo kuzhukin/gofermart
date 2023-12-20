@@ -47,6 +47,8 @@ func (c *AccrualClient) UpdateOrderStatus(ctx context.Context, orderID string) (
 			return nil, fmt.Errorf("read from body, err=%w", err)
 		}
 
+		zlog.Logger.Debugf("ACCRUAL RESPONSE DATA %s", string(data))
+
 		accrual := &AccrualResponse{}
 		if err := json.Unmarshal(data, accrual); err != nil {
 			return nil, fmt.Errorf("accrual unmarshal err=%w", err)

@@ -214,6 +214,8 @@ func (c *Controller) Withdraw(ctx context.Context, login string, orderID string,
 		return err
 	}
 
+	rows.Close()
+
 	if user.Balance < amount {
 		return ErrNotEnoughFundsInTheAccount
 	}
@@ -315,27 +317,35 @@ func (c *Controller) GetUserStatistic(ctx context.Context, login string) (*UserS
 	getUserQuery := prepareGetUserQuery(login)
 	withdrawaslSumQuey := prepareWithdrawalsSumQuery(login)
 
-	rows, err := tx.QueryContext(ctx, getUserQuery.request, getUserQuery.args...)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		err := rows.Close()
+	user, err := func() (*User, error) {
+		rows, err := tx.QueryContext(ctx, getUserQuery.request, getUserQuery.args...)
 		if err != nil {
-			zlog.Logger.Errorf("rows close err=%s", err)
+			return nil, err
 		}
+		defer func() {
+			err := rows.Close()
+			if err != nil {
+				zlog.Logger.Errorf("rows close err=%s", err)
+			}
+		}()
+
+		if !rows.Next() {
+			return nil, ErrEmptyScannerResult
+		}
+
+		user := &User{}
+		if err := user.Scan(rows); err != nil {
+			return nil, err
+		}
+
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+
+		return user, err
 	}()
 
-	if !rows.Next() {
-		return nil, ErrEmptyScannerResult
-	}
-
-	user := &User{}
-	if err := user.Scan(rows); err != nil {
-		return nil, err
-	}
-
-	if err := rows.Err(); err != nil {
+	if err != nil {
 		return nil, err
 	}
 
@@ -354,9 +364,18 @@ func (c *Controller) GetUserStatistic(ctx context.Context, login string) (*UserS
 		return nil, ErrEmptyScannerResult
 	}
 
-	withdrawsSum := float64(0.0)
-	if err := withdrawRows.Scan(&withdrawsSum); err != nil {
+	var result interface{}
+	if err := withdrawRows.Scan(&result); err != nil {
 		return nil, fmt.Errorf("scan withdraws sum err=%w", err)
+	}
+
+	var withdrawsSum float64
+	switch v := result.(type) {
+	case float32:
+		withdrawsSum = float64(v)
+	case float64:
+		withdrawsSum = v
+	default:
 	}
 
 	if err := withdrawRows.Err(); err != nil {

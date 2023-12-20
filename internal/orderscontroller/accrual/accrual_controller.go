@@ -40,8 +40,6 @@ func StartNewController(
 		for {
 			select {
 			case <-checkAccrualTicker.C:
-				zlog.Logger.Debugf("Start check accrual")
-
 				if err := controller.checkAccrual(); err != nil {
 					zlog.Logger.Errorf("check accrual err=%s", err)
 				}
@@ -77,19 +75,16 @@ func (c *AccrualController) checkAccrual() error {
 		return err
 	}
 
-	zlog.Logger.Debugf("accrual controller has %d unexecuted orders", len(orders))
-
 	updatedOrders := c.checkOrdersStatus(ctx, orders)
-
-	zlog.Logger.Debugf("accrual controller has %d updated orders", len(updatedOrders))
-
 	c.handleUpdatedOrders(updatedOrders)
 
 	return nil
 }
 
 func (c *AccrualController) handleUpdatedOrders(orders []*sql.Order) {
-	c.updaterCh <- orders
+	if len(orders) > 0 {
+		c.updaterCh <- orders
+	}
 }
 
 func (c *AccrualController) startOrdersUpdater() {
@@ -97,9 +92,7 @@ func (c *AccrualController) startOrdersUpdater() {
 		for {
 			select {
 			case orders := <-c.updaterCh:
-				zlog.Logger.Debugf("START UPDATE ORDERS count=%d", len(orders))
 				for _, order := range orders {
-					zlog.Logger.Debugf("UPDATE ORDERS %+v", order)
 					c.updateOrder(order)
 					time.Sleep(time.Millisecond * 100)
 				}
