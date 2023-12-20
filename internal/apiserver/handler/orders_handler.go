@@ -156,6 +156,8 @@ func (h *OrdersHandler) serveGetOrderList(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	zlog.Logger.Debugf("GET user orders %s", string(data))
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 

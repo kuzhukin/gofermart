@@ -35,7 +35,7 @@ func readAuthCookie(r *http.Request) (string, error) {
 	return authorizationCookie.Value, nil
 }
 
-var ErrUserIsNotAuthentificated = errors.New("useris not authentificated")
+var ErrUserIsNotAuthentificated = errors.New("user isn't authentificated")
 
 // returning login and err if user is not exist
 func checkUserAuthorization(r *http.Request, checker AuthChecker) (string, error) {
@@ -58,7 +58,6 @@ func checkUserAuthorization(r *http.Request, checker AuthChecker) (string, error
 
 func validateOrderID(id string) bool {
 	// luna validation algorithm https://ru.wikipedia.org/wiki/%D0%90%D0%BB%D0%B3%D0%BE%D1%80%D0%B8%D1%82%D0%BC_%D0%9B%D1%83%D0%BD%D0%B0
-
 	sum := 0
 	parity := len(id) % 2
 
