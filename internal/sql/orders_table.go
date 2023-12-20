@@ -6,8 +6,6 @@ import (
 )
 
 const (
-
-	// ORDERS TABLE
 	createOrdersTableQuery = `CREATE TABLE IF NOT EXISTS orders (
 		"id" 			text					NOT NULL,
 		"status"		text					NOT NULL,

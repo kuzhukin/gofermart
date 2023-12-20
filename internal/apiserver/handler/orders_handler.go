@@ -18,6 +18,13 @@ type AuthChecker interface {
 	Check(ctx context.Context, userKey string) (string, error)
 }
 
+type OrderResponse struct {
+	Number     string  `json:"number"`
+	Status     string  `json:"status"`
+	Accrual    float64 `json:"accrual"`
+	UploadedAt string  `json:"uploaded_at"`
+}
+
 type OrdersHandler struct {
 	authChecker      AuthChecker
 	orderscontroller *orderscontroller.OrdersController
@@ -164,13 +171,6 @@ func (h *OrdersHandler) serveGetOrderList(w http.ResponseWriter, r *http.Request
 	if _, err := w.Write(data); err != nil {
 		zlog.Logger.Errorf("err write orders, err=%s", err)
 	}
-}
-
-type OrderResponse struct {
-	Number     string  `json:"number"`
-	Status     string  `json:"status"`
-	Accrual    float64 `json:"accrual"`
-	UploadedAt string  `json:"uploaded_at"`
 }
 
 func (h *OrdersHandler) getUserOrders(r *http.Request, login string) ([]byte, error) {

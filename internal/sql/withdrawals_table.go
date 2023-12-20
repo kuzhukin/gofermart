@@ -7,7 +7,6 @@ import (
 )
 
 const (
-	// BONUSES WITHDRAWALS TABLE
 	createWithdrawalsTableQuery = `CREATE TABLE IF NOT EXISTS withdrawals (
 		"order"			text				NOT NULL,
 		"user"			text				NOT NULL,
